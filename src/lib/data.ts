@@ -19,20 +19,29 @@ export const getContext = cache(async () => {
   const userId = claims?.claims.sub;
   if (!userId) redirect("/connexion");
 
-  const { data: me } = await supabase.from("household_people").select("id, household_id").eq("user_id", userId).maybeSingle();
-  if (!me) redirect("/foyer/nouveau");
-
-  const [{ data: household }, { data: people }] = await Promise.all([
-    supabase.from("households").select("id, name, invite_code, equipment, burners").eq("id", me.household_id).single(),
-    supabase.from("household_people").select("*").eq("household_id", me.household_id).order("position"),
-  ]);
+  // Une seule requête : les règles d'accès ne laissent voir que le foyer de l'utilisateur
+  const { data } = await supabase
+    .from("households")
+    .select("id, name, invite_code, equipment, burners, household_people(*)")
+    .order("position", { referencedTable: "household_people" })
+    .limit(1)
+    .maybeSingle();
+  const people = (data?.household_people ?? []) as Person[];
+  const me = people.find((p) => p.user_id === userId);
+  if (!data || !me) redirect("/foyer/nouveau");
 
   return {
     supabase,
     userId,
-    meId: me.id as string,
-    household: household as Household,
-    people: (people ?? []) as Person[],
+    meId: me.id,
+    household: {
+      id: data.id,
+      name: data.name,
+      invite_code: data.invite_code,
+      equipment: data.equipment,
+      burners: data.burners,
+    } as Household,
+    people,
   };
 });
 

@@ -297,10 +297,13 @@ async function generationInput(criteria: Criteria, weekStart: string): Promise<G
 
 async function rebuildShopping(supabase: SupabaseClient, planId: string, meals: PlanMeal[], recipes: Recipe[]) {
   const { people } = await getContext();
-  const pantry = (await getPantry()).map((p) => p.name);
+  const [pantryItems, { data: existing }] = await Promise.all([
+    getPantry(),
+    supabase.from("shopping_items").select("id, name, unit, manual, checked").eq("plan_id", planId),
+  ]);
+  const pantry = pantryItems.map((p) => p.name);
   const byId = new Map(recipes.map((r) => [r.id, r]));
   const lines = buildShoppingList(meals, byId, Math.max(people.length, 1), pantry);
-  const { data: existing } = await supabase.from("shopping_items").select("id, name, unit, manual, checked").eq("plan_id", planId);
   const checkedKeys = new Set((existing ?? []).filter((e) => e.checked && !e.manual).map((e) => shoppingKey(e.name, e.unit)));
 
   await supabase.from("shopping_items").delete().eq("plan_id", planId).eq("manual", false);

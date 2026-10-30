@@ -1,26 +1,58 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+@theme {
+  --color-ground: #f3f4ef;
+  --color-surface: #ffffff;
+  --color-ink: #17201a;
+  --color-ink-2: #3f4842;
+  --color-muted: #5b645e;
+  --color-line: #dde1da;
+  --color-line-soft: #eef0ec;
+  --color-chip: #eef1ec;
+  --color-brand: #1f6b4a;
+  --color-brand-dark: #174f37;
+  --color-brand-soft: #e3efe7;
+  --color-freeze: #1d4f9a;
+  --color-freeze-soft: #e6ecfb;
+  --color-warn: #8a3313;
+  --color-warn-soft: #fbe9e1;
+  --font-sans: var(--font-inter), system-ui, sans-serif;
+  --font-display: var(--font-bricolage), var(--font-inter), sans-serif;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-ground);
+  color: var(--color-ink);
+}
+
+input[type="checkbox"],
+input[type="range"] {
+  accent-color: var(--color-brand);
+}
+
+@layer components {
+  .card {
+    @apply rounded-2xl bg-surface;
+  }
+  .section-title {
+    @apply text-[13px] font-semibold tracking-[0.6px] text-muted uppercase;
+  }
+  .btn-primary {
+    @apply inline-flex min-h-[52px] items-center justify-center gap-2 rounded-[14px] bg-brand px-5 text-base font-semibold text-white transition-colors hover:bg-brand-dark disabled:opacity-60;
+  }
+  .btn-secondary {
+    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-line bg-surface px-3 text-sm font-semibold text-ink transition-colors hover:bg-chip;
+  }
+  .btn-dashed {
+    @apply inline-flex min-h-11 w-full items-center justify-center rounded-[10px] border border-dashed border-[#a9b1ab] text-sm font-medium text-ink-2 hover:bg-chip;
+  }
+  .field {
+    @apply min-h-11 w-full rounded-[10px] border border-line bg-surface px-3 text-[15px] text-ink outline-none focus:border-brand;
+  }
+  .label {
+    @apply text-[13px] font-semibold text-ink-2;
+  }
+  .chip {
+    @apply rounded-full bg-chip px-2 py-0.5 text-[11px] text-ink-2;
+  }
 }

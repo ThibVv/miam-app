@@ -1,0 +1,2 @@
+-- Les recettes de départ sont ajoutées par l'app à la création d'un foyer
+-- (voir src/lib/starter-recipes.ts), car elles ont besoin d'un foyer existant.

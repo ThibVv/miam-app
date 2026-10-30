@@ -34,13 +34,14 @@ const UNIT_ALIASES: Record<string, { unit: string; factor: number }> = {
   pincee: { unit: "pincée", factor: 1 },
   pot: { unit: "pot", factor: 1 },
   brique: { unit: "brique", factor: 1 },
+  cube: { unit: "cube", factor: 1 },
   pièce: { unit: "", factor: 1 },
   piece: { unit: "", factor: 1 },
   pc: { unit: "", factor: 1 },
   "": { unit: "", factor: 1 },
 };
 
-export const UNIT_CHOICES = ["", "g", "kg", "ml", "cl", "l", "c. à s.", "c. à c.", "boîte", "botte", "gousse", "tranche", "sachet", "pincée", "pot", "brique"];
+export const UNIT_CHOICES = ["", "g", "kg", "ml", "cl", "l", "c. à s.", "c. à c.", "boîte", "botte", "gousse", "tranche", "sachet", "pincée", "pot", "brique", "cube", "cm", "bouquet", "brin", "branche", "feuille", "poignée", "filet", "morceau", "verre"];
 
 export function normalizeUnit(raw: string): { unit: string; factor: number } {
   const key = raw.trim().toLowerCase().replace(/s$/, "");
@@ -48,7 +49,8 @@ export function normalizeUnit(raw: string): { unit: string; factor: number } {
 }
 
 function stripAccents(s: string) {
-  return s.normalize("NFD").replace(/[̀-ͯ]/g, "");
+  // « œ » et « æ » ne se décomposent pas : bœuf et boeuf doivent donner la même clé
+  return s.replace(/œ/g, "oe").replace(/æ/g, "ae").normalize("NFD").replace(/[̀-ͯ]/g, "");
 }
 
 /** Clé de regroupement d'un ingrédient : minuscules, sans accents, au singulier. */
@@ -94,7 +96,7 @@ export function formatQuantity(quantity: number | null, unit: string): string {
   return u ? `${text} ${u}` : text;
 }
 
-const PLURALIZABLE = new Set(["boîte", "botte", "gousse", "tranche", "sachet", "pincée", "pot", "brique"]);
+const PLURALIZABLE = new Set(["boîte", "botte", "gousse", "tranche", "sachet", "pincée", "pot", "brique", "cube", "bouquet", "brin", "branche", "feuille", "poignée", "filet", "verre"]);
 
 /** Arrondi pratique pour les courses : on n'achète pas 1,3 oignon. */
 export function roundForShopping(quantity: number, unit: string): number {

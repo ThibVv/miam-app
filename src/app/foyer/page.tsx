@@ -1,37 +1,29 @@
 import { getContext } from "@/lib/data";
 import { signOut } from "@/app/actions";
-import { AppShell, Avatar, PageHeader } from "@/components/ui";
-import { ProfileForm } from "./ProfileForm";
+import { AppShell, PageHeader } from "@/components/ui";
+import { HouseholdSettings } from "./HouseholdSettings";
 
 export default async function HouseholdPage() {
-  const { household, members, userId } = await getContext();
-  const me = members.find((m) => m.user_id === userId)!;
+  const { household, people, meId } = await getContext();
+  const withoutAccount = people.filter((p) => !p.user_id);
 
   return (
     <AppShell>
       <PageHeader kicker="Foyer" title={household.name} />
 
-      <section className="card flex flex-col gap-3 p-4">
-        <h2 className="section-title">Membres</h2>
-        {members.map((m) => (
-          <div key={m.user_id} className="flex items-center gap-3 text-[15px] font-medium">
-            <Avatar member={m} />
-            {m.display_name}
-            {m.user_id === userId && <span className="text-xs text-muted">(vous)</span>}
-          </div>
-        ))}
-        {members.length < 2 && (
-          <div className="rounded-xl bg-brand-soft p-3 text-sm text-brand-dark">
-            Invitez votre partenaire : à l&apos;inscription, il ou elle choisit « Rejoindre » et saisit le code{" "}
-            <strong className="tracking-[2px]">{household.invite_code}</strong>.
-          </div>
-        )}
-        {members.length >= 2 && (
-          <p className="text-xs text-muted">Code d&apos;invitation : <span className="tracking-[2px]">{household.invite_code}</span></p>
-        )}
+      <section className="card flex flex-col gap-2 p-4">
+        <h2 className="section-title">Inviter</h2>
+        <p className="text-sm">
+          Code d&apos;invitation : <strong className="text-lg tracking-[3px]">{household.invite_code}</strong>
+        </p>
+        <p className="text-xs text-muted">
+          {withoutAccount.length
+            ? `${withoutAccount.map((p) => p.name).join(", ")} n'${withoutAccount.length > 1 ? "ont" : "a"} pas encore de compte : après avoir créé son compte, choisir « Rejoindre », saisir ce code puis se choisir dans la liste.`
+            : "Tout le monde a son compte."}
+        </p>
       </section>
 
-      <ProfileForm displayName={me.display_name} color={me.color} />
+      <HouseholdSettings household={household} people={people} meId={meId} />
 
       <form action={signOut}>
         <button type="submit" className="btn-secondary w-full">Se déconnecter</button>

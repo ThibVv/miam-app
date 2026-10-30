@@ -4,7 +4,7 @@ import { AppShell, EmptyState, PageHeader } from "@/components/ui";
 import { ShoppingList } from "./ShoppingList";
 
 export default async function ShoppingPage() {
-  const [{ members, userId }, plan] = await Promise.all([getContext(), getLatestPlan()]);
+  const [{ people, userId }, plan] = await Promise.all([getContext(), getLatestPlan()]);
 
   if (!plan) {
     return (
@@ -19,7 +19,7 @@ export default async function ShoppingPage() {
   return (
     <AppShell>
       <PageHeader kicker={`Pour la semaine du ${formatWeekRange(plan.week_start)}`} title="Courses" />
-      <ShoppingList planId={plan.id} initialItems={items} members={members} userId={userId} />
+      <ShoppingList planId={plan.id} initialItems={items} people={people} userId={userId} />
     </AppShell>
   );
 }

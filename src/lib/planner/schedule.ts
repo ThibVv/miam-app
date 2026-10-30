@@ -1,13 +1,16 @@
 import { formatQuantity, ingredientKey, normalizeUnit, roundForShopping } from "@/lib/units";
 import type { Recipe, Station } from "@/lib/types";
 
-/** Nombre d'usages simultanés possibles par poste. */
-export const STATION_CAPACITY: Record<Station, number> = {
+/** Capacités par défaut, quand on ne connaît pas le matériel du foyer. */
+export const DEFAULT_CAPACITY: Record<Station, number> = {
   plan: Infinity,
   plaque: 4,
   four: 1,
   repos: Infinity,
 };
+
+/** Un repos long en fin de recette (une nuit au frigo…) se fait après le batch, pas pendant. */
+const AFTER_BATCH_REST = 60;
 
 export interface ScheduledTask {
   id: string;
@@ -27,6 +30,8 @@ export interface Schedule {
   totalMinutes: number;
   packagingMinutes: number;
   loadByCook: Record<string, number>;
+  /** Étapes à faire après le batch (repos au frigo…) */
+  afterwards: { recipeName: string; text: string }[];
 }
 
 interface PendingTask {
@@ -43,10 +48,13 @@ interface PendingTask {
   scheduled?: ScheduledTask;
 }
 
-function buildTasks(recipes: Recipe[]): PendingTask[] {
+function buildTasks(recipes: Recipe[], afterwards: Schedule["afterwards"]): PendingTask[] {
   const all: PendingTask[] = [];
   for (const r of recipes) {
     const steps = [...r.recipe_steps].sort((a, b) => a.position - b.position);
+    while (steps.length && steps[steps.length - 1].station === "repos" && steps[steps.length - 1].duration_minutes >= AFTER_BATCH_REST) {
+      afterwards.unshift({ recipeName: r.name, text: steps.pop()!.text });
+    }
     let prev: PendingTask | null = null;
     const chain: PendingTask[] = [];
     steps.forEach((s, i) => {
@@ -79,8 +87,11 @@ function buildTasks(recipes: Recipe[]): PendingTask[] {
  * en priorité celles des recettes les plus longues, si le poste est libre
  * et (pour les étapes actives) si un cuisinier a les mains libres.
  */
-export function scheduleBatch(recipes: Recipe[], cooks: string[]): Schedule {
-  const tasks = buildTasks(recipes);
+export function scheduleBatch(recipes: Recipe[], cooks: string[], capacities: Record<Station, number> = DEFAULT_CAPACITY): Schedule {
+  const afterwards: Schedule["afterwards"] = [];
+  const tasks = buildTasks(recipes, afterwards);
+  // Un poste absent du foyer (pas de four…) garde une place, sinon l'étape ne serait jamais planifiée
+  const capacity = (station: Station) => Math.max(capacities[station] ?? 1, 1);
   const cookFreeAt = new Map(cooks.map((c) => [c, 0]));
   const loadByCook: Record<string, number> = Object.fromEntries(cooks.map((c) => [c, 0]));
   const running: ScheduledTask[] = [];
@@ -94,7 +105,7 @@ export function scheduleBatch(recipes: Recipe[], cooks: string[]): Schedule {
 
     for (const task of ready) {
       const busyHere = running.filter((r) => r.station === task.station && r.start <= t && r.end > t).length;
-      if (busyHere >= STATION_CAPACITY[task.station]) continue;
+      if (busyHere >= capacity(task.station)) continue;
 
       let cook: string | null = null;
       if (task.handsBusy) {
@@ -130,7 +141,7 @@ export function scheduleBatch(recipes: Recipe[], cooks: string[]): Schedule {
   const cookingEnd = scheduled.reduce((m, s) => Math.max(m, s.end), 0);
   // Refroidir, portionner et étiqueter : ~4 min par recette, partagé entre cuisiniers
   const packagingMinutes = Math.ceil((recipes.length * 4) / Math.max(cooks.length, 1));
-  return { tasks: scheduled, totalMinutes: cookingEnd + packagingMinutes, packagingMinutes, loadByCook };
+  return { tasks: scheduled, totalMinutes: cookingEnd + packagingMinutes, packagingMinutes, loadByCook, afterwards };
 }
 
 export interface GroupedPrep {
@@ -140,10 +151,9 @@ export interface GroupedPrep {
 }
 
 /** Légumes utilisés dans plusieurs recettes : à éplucher et couper en une seule fois. */
-export function groupedPrep(recipes: Recipe[], portionsPerRecipe: number): GroupedPrep[] {
+export function groupedPrep(items: { recipe: Recipe; scale: number }[]): GroupedPrep[] {
   const map = new Map<string, { name: string; qty: number | null; unit: string; recipes: Set<string> }>();
-  for (const r of recipes) {
-    const scale = portionsPerRecipe / r.servings;
+  for (const { recipe: r, scale } of items) {
     for (const ing of r.recipe_ingredients) {
       if (ing.aisle !== "Fruits & légumes") continue;
       const { unit, factor } = normalizeUnit(ing.unit);

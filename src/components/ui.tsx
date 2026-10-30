@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { Member } from "@/lib/types";
+import type { Person } from "@/lib/types";
 import { BottomNav } from "@/components/BottomNav";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -23,26 +23,26 @@ export function PageHeader({ kicker, title, action }: { kicker?: string; title: 
   );
 }
 
-export function Avatar({ member, size = 28 }: { member?: Member; size?: number }) {
-  const initial = member?.display_name.trim().charAt(0).toUpperCase() || "?";
+export function Avatar({ person, size = 28 }: { person?: Pick<Person, "name" | "color">; size?: number }) {
+  const initial = person?.name.trim().charAt(0).toUpperCase() || "?";
   return (
     <span
-      title={member?.display_name}
-      aria-label={member?.display_name}
+      title={person?.name}
+      aria-label={person?.name}
       className="inline-flex shrink-0 items-center justify-center rounded-full font-semibold text-white"
-      style={{ width: size, height: size, fontSize: size * 0.42, background: member?.color ?? "#5b645e" }}
+      style={{ width: size, height: size, fontSize: size * 0.42, background: person?.color ?? "#5b645e" }}
     >
       {initial}
     </span>
   );
 }
 
-export function MembersBadge({ members }: { members: Member[] }) {
+export function PeopleBadge({ people }: { people: Person[] }) {
   return (
-    <Link href="/foyer" aria-label="Foyer et profil" className="flex min-h-11 items-center">
-      {members.map((m, i) => (
-        <span key={m.user_id} className={`rounded-full border-2 border-ground ${i ? "-ml-2" : ""}`}>
-          <Avatar member={m} size={34} />
+    <Link href="/foyer" aria-label="Foyer, personnes et matériel" className="flex min-h-11 items-center">
+      {people.map((p, i) => (
+        <span key={p.id} className={`rounded-full border-2 border-ground ${i ? "-ml-2" : ""}`}>
+          <Avatar person={p} size={34} />
         </span>
       ))}
     </Link>

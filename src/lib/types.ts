@@ -1,37 +1,52 @@
-export type Station = "plan" | "plaque" | "four" | "repos";
-export type Slot = "midi" | "soir";
+/** Poste de cuisson : plan, plaque, four, repos, ou un appareil du catalogue (air-fryer, mijoteuse…). */
+export type Station = string;
+export type Slot = "midi" | "soir" | "extra";
 export type Storage = "frigo" | "congelo";
+export type Category = "plat" | "petit-dej" | "gouter";
 
-export const STATIONS: { value: Station; label: string }[] = [
-  { value: "plan", label: "Plan de travail" },
-  { value: "plaque", label: "Plaque" },
-  { value: "four", label: "Four" },
-  { value: "repos", label: "Repos" },
+export const CATEGORIES: { value: Category; label: string }[] = [
+  { value: "plat", label: "Plat" },
+  { value: "petit-dej", label: "Petit-déj" },
+  { value: "gouter", label: "Goûter" },
 ];
+
+/** Catégories ajoutées « en plus » des repas de la semaine */
+export const EXTRA_CATEGORIES: Category[] = ["petit-dej", "gouter"];
 
 export const AISLES = [
   "Fruits & légumes",
   "Boucherie & poisson",
   "Crèmerie",
   "Épicerie",
+  "Épicerie sucrée",
   "Surgelés",
   "Boulangerie",
   "Autre",
 ] as const;
 
 export const DAYS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi"] as const;
-export const SLOTS: Slot[] = ["midi", "soir"];
+export const MEAL_SLOTS: Slot[] = ["midi", "soir"];
 
-export interface Member {
-  user_id: string;
-  display_name: string;
+/** Une personne du foyer (avec ou sans compte) */
+export interface Person {
+  id: string;
+  household_id: string;
+  user_id: string | null;
+  name: string;
   color: string;
+  /** Envies habituelles (tags) */
+  likes: string[];
+  /** Ingrédients à éviter */
+  dislikes: string[];
+  position: number;
 }
 
 export interface Household {
   id: string;
   name: string;
   invite_code: string;
+  equipment: string[];
+  burners: number;
 }
 
 export interface Ingredient {
@@ -41,6 +56,8 @@ export interface Ingredient {
   quantity: number | null;
   unit: string;
   aisle: string;
+  /** Sous-partie de la liste (« Pour la sauce ») */
+  group_label: string | null;
 }
 
 export interface Step {
@@ -57,12 +74,18 @@ export interface Recipe {
   household_id: string;
   author_id: string | null;
   name: string;
+  category: Category;
+  description: string | null;
   servings: number;
+  /** Rendement quand ce ne sont pas des portions : « 10 gaufres », « 1 cake » */
+  yield_label: string | null;
   prep_minutes: number;
   cook_minutes: number;
+  rest_minutes: number;
   fridge_days: number;
   freezable: boolean;
   tags: string[];
+  equipment: string[];
   source_url: string | null;
   notes: string | null;
   recipe_ingredients: Ingredient[];
@@ -75,7 +98,7 @@ export type RecipeDraft = Omit<Recipe, "id" | "household_id" | "author_id">;
 export interface PlanMeal {
   id?: string;
   recipe_id: string;
-  chosen_by: string | null;
+  person_id: string | null;
   day: number;
   slot: Slot;
   storage: Storage;
@@ -90,9 +113,9 @@ export interface MealPlan {
 }
 
 export interface PersonCriteria {
-  userId: string;
+  personId: string;
   count: number;
-  /** Envies propres à la personne : un tag ou plusieurs */
+  /** Envies de la semaine (tags) */
   tags: string[];
 }
 
@@ -105,6 +128,10 @@ export interface Criteria {
   excludeIngredients: string[];
   avoidRecentWeeks: number;
   shareIngredients: boolean;
+  /** Utiliser en priorité les fonds de placard */
+  usePantry: boolean;
+  /** Recettes en plus des repas : { "petit-dej": 1, "gouter": 1 } */
+  extras: Partial<Record<Category, number>>;
 }
 
 export interface ShoppingItem {
@@ -116,6 +143,12 @@ export interface ShoppingItem {
   aisle: string;
   sources: string[];
   manual: boolean;
+  in_pantry: boolean;
   checked: boolean;
   checked_by: string | null;
+}
+
+export interface PantryItem {
+  id: string;
+  name: string;
 }

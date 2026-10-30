@@ -1,11 +1,12 @@
 import { getContext, getLatestPlan, getRecipes } from "@/lib/data";
+import { stationCapacities } from "@/lib/equipment";
 import { formatMinutes, groupedPrep, scheduleBatch } from "@/lib/planner/schedule";
 import { cookingDay } from "@/lib/week";
 import { AppShell, EmptyState, PageHeader } from "@/components/ui";
 import { PrepGuide } from "./PrepGuide";
 
 export default async function PrepPage() {
-  const [{ members }, plan, recipes] = await Promise.all([getContext(), getLatestPlan(), getRecipes()]);
+  const [{ people, household }, plan, recipes] = await Promise.all([getContext(), getLatestPlan(), getRecipes()]);
 
   if (!plan) {
     return (
@@ -18,10 +19,14 @@ export default async function PrepPage() {
 
   const byId = new Map(recipes.map((r) => [r.id, r]));
   const planRecipes = [...new Set(plan.plan_meals.map((m) => m.recipe_id))].map((id) => byId.get(id)).filter((r) => r != null);
-  const cooks = members.map((m) => m.user_id);
-  const schedule = scheduleBatch(planRecipes, cooks);
-  const solo = cooks.length > 1 ? scheduleBatch(planRecipes, [cooks[0]]) : null;
-  const prep = groupedPrep(planRecipes, Math.max(members.length, 1));
+  const cooks = people.map((p) => p.id);
+  const capacities = stationCapacities(household.equipment, household.burners);
+  const schedule = scheduleBatch(planRecipes, cooks, capacities);
+  const solo = cooks.length > 1 ? scheduleBatch(planRecipes, [cooks[0]], capacities) : null;
+  const portions = Math.max(people.length, 1);
+  const prep = groupedPrep(
+    planRecipes.map((recipe) => ({ recipe, scale: recipe.category === "plat" ? portions / recipe.servings : 1 })),
+  );
   const freezerMeals = plan.plan_meals.filter((m) => m.storage === "congelo").map((m) => byId.get(m.recipe_id)?.name).filter(Boolean) as string[];
 
   return (
@@ -41,13 +46,7 @@ export default async function PrepPage() {
         )}
       </div>
 
-      <PrepGuide
-        storageKey={`prep-${plan.id}`}
-        schedule={schedule}
-        members={members}
-        groupedPrep={prep}
-        freezerMeals={freezerMeals}
-      />
+      <PrepGuide storageKey={`prep-${plan.id}`} schedule={schedule} people={people} groupedPrep={prep} freezerMeals={freezerMeals} />
     </AppShell>
   );
 }

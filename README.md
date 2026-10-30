@@ -1,48 +1,52 @@
 # Miam
 
-Planificateur de batch cooking à deux : une bibliothèque de recettes partagée, une semaine générée selon vos critères (5 recettes chacun → 20 tups), la liste de courses fusionnée et synchronisée, et un guide de préparation optimisé pour cuisiner à deux le dimanche.
+Planificateur de batch cooking : une bibliothèque de recettes partagée (les fiches du Drive « Recettes »), une semaine générée selon les envies de chacun, le matériel du foyer et les fonds de placard, la liste de courses fusionnée et synchronisée, et un guide de préparation optimisé pour cuisiner à plusieurs le dimanche.
 
 Stack : Next.js 16 (App Router, PWA installable) + Supabase (auth, Postgres avec RLS, Realtime).
 
-## Démarrer en local
+## Démarrer
 
-Prérequis : Node 22+, Docker Desktop lancé.
+Prérequis : Node 22+ et un projet Supabase (en ligne, ou en local avec Docker et `npm run db:start`).
+
+1. Dans le **SQL Editor** de Supabase, exécutez `supabase/migrations/20261031090000_v2_foyer_reel.sql` (il repart de zéro : il supprime toutes les données existantes, pas les comptes).
+2. Dans **Authentication → Sign In / Providers → Email**, désactivez « Confirm email ».
+3. Copiez `.env.example` en `.env.local` avec l'URL du projet et la **Publishable key**.
 
 ```bash
 npm install
-npm run db:start
-```
-
-`db:start` lance Supabase en local et applique les migrations de `supabase/migrations`. Copiez ensuite `.env.example` en `.env.local` et renseignez la **Publishable key** affichée par la commande (ou `npx supabase@2.122.0 status`).
-
-```bash
 npm run dev
 ```
 
-L'app tourne sur http://localhost:3000. Le Studio Supabase (pour voir les tables) est sur http://127.0.0.1:54323.
+L'app tourne sur http://localhost:3000.
 
-1. Créez un compte, puis un foyer : 12 recettes de départ sont ajoutées.
-2. Votre partenaire crée son compte et rejoint le foyer avec le code d'invitation (page Foyer, en touchant les avatars).
+## Premier usage
+
+1. Créer un compte, puis **Créer un foyer** : nombre de personnes, préférences de chacun (envies, « n'aime pas »), matériel de cuisine. Les 77 recettes du Drive sont ajoutées, déjà classées.
+2. Les autres personnes créent leur compte, choisissent **Rejoindre**, saisissent le code d'invitation (page Foyer, en touchant les avatars) et se choisissent dans la liste.
+3. Avant chaque semaine : noter les **fonds de placard**, puis **Générer**. Les petits-déj et goûters s'ajoutent avec les « + ».
 
 ## Scripts
 
 | Commande | Rôle |
 | --- | --- |
 | `npm run dev` | Serveur de développement |
-| `npm test` | Tests unitaires (génération, courses, ordonnancement, import) |
+| `npm test` | Tests unitaires (génération, courses, ordonnancement, lecture des fiches) |
 | `npm run lint` | ESLint |
 | `npm run build` | Build de production |
-| `npm run db:reset` | Recrée la base locale depuis les migrations |
+| `npx tsx@4.23.15 --tsconfig tsconfig.json scripts/build-starter-recipes.ts` | Reconvertit les fiches du Drive (`scripts/data/drive-recipes.json`) en recettes de départ |
 
 ## Organisation
 
-- `supabase/migrations/` : schéma, règles RLS (tout est cloisonné par foyer), fonctions `create_household` / `join_household`.
-- `src/lib/planner/generate.ts` : choix des recettes (envies de chacun, minimum par tag, exclusions, anti-répétition, ingrédients mutualisés, temps max) puis placement sur la semaine (le plus périssable d'abord, congélo au-delà de la durée au frigo).
-- `src/lib/planner/shopping.ts` : liste de courses fusionnée, unités normalisées (`src/lib/units.ts`), mise à l'échelle des portions.
-- `src/lib/planner/schedule.ts` : ordonnancement du batch (four ×1, plaques ×4, cuisiniers aux mains libres pendant les cuissons passives), mise en place groupée.
-- `src/lib/import/` : import d'une recette depuis un lien (JSON-LD schema.org), avec devinette du poste, de la durée et des mains occupées.
-- `src/app/` : écrans (Semaine, Générer, Courses, Prep, Recettes, Foyer) et actions serveur (`actions.ts`).
+- `supabase/migrations/` : schéma, règles RLS (tout est cloisonné par foyer), fonctions `create_household`, `household_preview`, `join_household`.
+- `src/lib/import/parse-text-recipe.ts` : lecture d'une recette au format des fiches (« Pour 4 personnes · Conservation… », ingrédients avec sous-parties, étapes numérotées, conseils). Sert à l'import du Drive et au « Coller un texte » de l'éditeur.
+- `src/lib/equipment.ts` : catalogue du matériel, postes de cuisson et capacités (nombre de feux, fours, appareils).
+- `src/lib/planner/generate.ts` : choix des plats (envies, « n'aime pas », matériel disponible, fonds de placard, minimum par tag, anti-répétition, ingrédients mutualisés, charge du four) puis placement sur la semaine, et extras petit-déj / goûter.
+- `src/lib/planner/shopping.ts` : liste de courses fusionnée, unités normalisées (`src/lib/units.ts`), fonds de placard cochés d'office.
+- `src/lib/planner/schedule.ts` : ordonnancement du batch selon le matériel du foyer, cuisiniers aux mains libres pendant les cuissons passives, mise en place groupée.
+- `src/app/` : écrans (Semaine, Générer, Placard, Courses, Prep, Recettes, Foyer) et actions serveur (`actions.ts`).
 
-## Mettre en ligne
+## Mettre en ligne (pour l'utiliser sur téléphone)
 
-Créez un projet sur supabase.com, appliquez les migrations (`npx supabase@2.122.0 link` puis `db push`), et déployez l'app (Vercel par exemple) avec les deux variables d'environnement du projet.
+1. Poussez le dépôt sur GitHub, puis importez-le sur [vercel.com](https://vercel.com) avec les variables `NEXT_PUBLIC_SUPABASE_URL` et `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`.
+2. Dans Supabase, **Authentication → URL Configuration** : mettez l'adresse Vercel dans « Site URL ».
+3. Sur le téléphone, ouvrez l'adresse puis « Ajouter à l'écran d'accueil » : l'app s'ouvre comme une application.

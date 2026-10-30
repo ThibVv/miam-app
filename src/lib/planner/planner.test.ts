@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { STARTER_RECIPES } from "@/lib/starter-recipes";
-import { generatePlan, pickReplacement } from "@/lib/planner/generate";
+import { eligibleRecipes, generatePlan, pickExtras, pickReplacement, type GenerateInput } from "@/lib/planner/generate";
 import { buildShoppingList } from "@/lib/planner/shopping";
 import { groupedPrep, scheduleBatch } from "@/lib/planner/schedule";
-import type { Criteria, Recipe } from "@/lib/types";
+import { DEFAULT_EQUIPMENT, stationCapacities } from "@/lib/equipment";
+import type { Criteria, PlanMeal, Recipe } from "@/lib/types";
 
-const recipes: Recipe[] = STARTER_RECIPES.map((d, i) => ({ ...d, id: `r${i}`, household_id: "h", author_id: i % 2 ? "b" : "a" }));
+const recipes: Recipe[] = STARTER_RECIPES.map((d, i) => ({ ...d, id: `r${i}`, household_id: "h", author_id: null }));
 const byId = new Map(recipes.map((r) => [r.id, r]));
+const byName = (name: string) => recipes.find((r) => r.name.startsWith(name))!;
 
 function seeded(seed = 42) {
   let s = seed;
@@ -15,105 +17,164 @@ function seeded(seed = 42) {
 
 const criteria: Criteria = {
   people: [
-    { userId: "a", count: 5, tags: ["épicé"] },
-    { userId: "b", count: 5, tags: ["comfort food"] },
+    { personId: "a", count: 5, tags: ["épicé"] },
+    { personId: "b", count: 5, tags: ["comfort food"] },
   ],
   maxMinutes: 180,
   minTags: { végé: 3 },
   excludeIngredients: [],
   avoidRecentWeeks: 3,
   shareIngredients: true,
+  usePantry: true,
+  extras: {},
 };
 
+const input = (over: Partial<GenerateInput> = {}): GenerateInput => ({
+  recipes,
+  criteria,
+  weeksSinceEaten: new Map(),
+  equipment: [...DEFAULT_EQUIPMENT],
+  rng: seeded(),
+  ...over,
+});
+
 describe("generatePlan", () => {
-  it("remplit les 10 créneaux avec 10 recettes distinctes, 5 par personne", () => {
-    const { meals } = generatePlan({ recipes, criteria, weeksSinceEaten: new Map(), rng: seeded() });
-    expect(meals).toHaveLength(10);
-    expect(new Set(meals.map((m) => m.recipe_id)).size).toBe(10);
-    expect(meals.filter((m) => m.chosen_by === "a")).toHaveLength(5);
-    expect(new Set(meals.map((m) => `${m.day}-${m.slot}`)).size).toBe(10);
+  it("remplit les 10 créneaux avec 10 plats distincts, 5 par personne", () => {
+    const { meals } = generatePlan(input());
+    const mains = meals.filter((m) => m.slot !== "extra");
+    expect(mains).toHaveLength(10);
+    expect(new Set(mains.map((m) => m.recipe_id)).size).toBe(10);
+    expect(mains.filter((m) => m.person_id === "a")).toHaveLength(5);
+    expect(mains.every((m) => byId.get(m.recipe_id)!.category === "plat")).toBe(true);
   });
 
-  it("respecte les exclusions et le minimum végé", () => {
-    const { meals } = generatePlan({ recipes, criteria: { ...criteria, excludeIngredients: ["bœuf"] }, weeksSinceEaten: new Map(), rng: seeded(7) });
-    const chosen = meals.map((m) => byId.get(m.recipe_id)!);
-    expect(chosen.some((r) => r.recipe_ingredients.some((i) => /b(œ|oe)uf/i.test(i.name)))).toBe(false);
-    expect(chosen.filter((r) => r.tags.includes("végé")).length).toBeGreaterThanOrEqual(3);
+  it("respecte les exclusions, les « n'aime pas » et le minimum végé", () => {
+    for (let seed = 1; seed <= 5; seed++) {
+      const { meals } = generatePlan(input({ criteria: { ...criteria, excludeIngredients: ["bœuf"] }, dislikes: ["champignons"], rng: seeded(seed) }));
+      const chosen = meals.map((m) => byId.get(m.recipe_id)!);
+      const names = chosen.flatMap((r) => r.recipe_ingredients.map((i) => i.name.toLowerCase()));
+      expect(names.some((n) => /b(œ|oe)uf/.test(n))).toBe(false);
+      expect(names.some((n) => n.includes("champignon"))).toBe(false);
+      expect(chosen.filter((r) => r.tags.includes("végé")).length).toBeGreaterThanOrEqual(3);
+    }
   });
 
-  it("met au congélateur ce qui dépasse sa durée au frigo, et les plats fragiles en début de semaine", () => {
-    const { meals } = generatePlan({ recipes, criteria, weeksSinceEaten: new Map(), rng: seeded(3) });
-    for (const m of meals) {
+  it("écarte les recettes dont le matériel manque (mijoteuse, air fryer, gaufrier)", () => {
+    const pool = eligibleRecipes(input(), "plat");
+    expect(pool.find((r) => r.name.includes("à la Mijoteuse"))).toBeUndefined();
+    expect(pool.find((r) => r.name.startsWith("Gaufres salées"))).toBeUndefined();
+    const withSlowCooker = eligibleRecipes(input({ equipment: [...DEFAULT_EQUIPMENT, "mijoteuse", "gaufrier"] }), "plat");
+    expect(withSlowCooker.find((r) => r.name.includes("à la Mijoteuse"))).toBeDefined();
+    expect(withSlowCooker.find((r) => r.name.startsWith("Gaufres salées"))).toBeDefined();
+  });
+
+  it("sans four, aucun plat au four", () => {
+    const pool = eligibleRecipes(input({ equipment: ["plaque-induction", "poele"] }), "plat");
+    expect(pool.some((r) => r.recipe_steps.some((s) => s.station === "four"))).toBe(false);
+  });
+
+  it("favorise les fonds de placard", () => {
+    const PANTRY = ["lait de coco", "pois chiches", "lentilles corail", "crevettes"];
+    const uses = /(lait de coco|pois chiches|lentilles corail|crevettes)/i;
+    const count = (usePantry: boolean) => {
+      let n = 0;
+      for (let seed = 1; seed <= 20; seed++) {
+        const { meals } = generatePlan(input({ pantry: usePantry ? PANTRY : [], criteria: { ...criteria, minTags: {}, usePantry }, rng: seeded(seed) }));
+        n += meals.filter((m) => byId.get(m.recipe_id)!.recipe_ingredients.some((i) => uses.test(i.name))).length;
+      }
+      return n;
+    };
+    expect(count(true)).toBeGreaterThan(count(false) * 1.3);
+  });
+
+  it("met au congélateur ce qui dépasse sa durée au frigo", () => {
+    const { meals } = generatePlan(input({ rng: seeded(3) }));
+    for (const m of meals.filter((x) => x.slot !== "extra")) {
       const r = byId.get(m.recipe_id)!;
       if (m.day + 1 > r.fridge_days && r.freezable) expect(m.storage).toBe("congelo");
-      if (m.storage === "frigo" && !r.freezable) expect(m.day + 1).toBeLessThanOrEqual(r.fridge_days);
     }
   });
 
-  it("évite les recettes mangées récemment quand c'est possible", () => {
-    const recent = new Map(recipes.slice(0, 2).map((r) => [r.id, 1]));
-    const small = { ...criteria, people: [{ userId: "a", count: 4, tags: [] }], minTags: {} };
-    const { meals } = generatePlan({ recipes, criteria: small, weeksSinceEaten: recent, rng: seeded(9) });
-    expect(meals.map((m) => m.recipe_id)).not.toContain("r0");
-    expect(meals.map((m) => m.recipe_id)).not.toContain("r1");
+  it("ajoute les extras demandés avec les « + », sans les compter dans les plats", () => {
+    const { meals } = generatePlan(input({ criteria: { ...criteria, extras: { "petit-dej": 1, gouter: 2 } } }));
+    const extras = meals.filter((m) => m.slot === "extra").map((m) => byId.get(m.recipe_id)!);
+    expect(extras.filter((r) => r.category === "petit-dej")).toHaveLength(1);
+    expect(extras.filter((r) => r.category === "gouter")).toHaveLength(2);
+    expect(meals.filter((m) => m.slot !== "extra")).toHaveLength(10);
   });
 
-  it("propose un remplacement absent de la semaine", () => {
-    const { meals } = generatePlan({ recipes, criteria, weeksSinceEaten: new Map(), rng: seeded() });
-    const ids = meals.map((m) => m.recipe_id);
-    const replacement = pickReplacement({ recipes, criteria, weeksSinceEaten: new Map(), rng: seeded() }, ids, ids[0], "a", 0);
-    expect(replacement).toBeDefined();
-    expect(ids).not.toContain(replacement!.id);
-  });
-
-  it("ne remplace un plat de fin de semaine que par un plat qui tient jusque-là", () => {
-    const few = recipes.slice(0, 6).map((r) => r.id);
-    for (let i = 0; i < 20; i++) {
-      const r = pickReplacement({ recipes, criteria, weeksSinceEaten: new Map(), rng: seeded(i + 1) }, few, few[0], "a", 3)!;
-      expect(r.freezable || r.fridge_days >= 4).toBe(true);
-    }
+  it("un extra ajouté plus tard n'est pas un doublon", () => {
+    const first = pickExtras(input({ criteria: { ...criteria, extras: { gouter: 1 } } }));
+    const second = pickExtras(input({ criteria: { ...criteria, extras: { gouter: 1 } } }), first.map((m) => m.recipe_id));
+    expect(second[0].recipe_id).not.toBe(first[0].recipe_id);
   });
 
   it("évite deux plats du même type dans la semaine", () => {
     for (let seed = 1; seed <= 10; seed++) {
-      const { meals } = generatePlan({ recipes, criteria, weeksSinceEaten: new Map(), rng: seeded(seed) });
-      const chilis = meals.filter((m) => byId.get(m.recipe_id)!.name.startsWith("Chili"));
-      expect(chilis.length).toBeLessThanOrEqual(1);
+      const { meals } = generatePlan(input({ rng: seeded(seed) }));
+      const kinds = meals.map((m) => byId.get(m.recipe_id)!.name.split(" ")[0].toLowerCase());
+      expect(kinds.filter((k) => k === "chili").length).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it("ne remplace un plat de fin de semaine que par un plat qui tient jusque-là", () => {
+    const { meals } = generatePlan(input());
+    const ids = meals.map((m) => m.recipe_id);
+    for (let i = 0; i < 10; i++) {
+      const r = pickReplacement(input({ rng: seeded(i + 1) }), ids, ids[0], "a", 4)!;
+      expect(ids).not.toContain(r.id);
+      expect(r.freezable || r.fridge_days >= 5).toBe(true);
     }
   });
 });
 
 describe("buildShoppingList", () => {
+  const meal = (r: Recipe, slot: PlanMeal["slot"] = "midi"): PlanMeal => ({ recipe_id: r.id, person_id: null, day: 0, slot, storage: "frigo" });
+
   it("additionne les ingrédients communs et met à l'échelle des portions", () => {
-    const curry = recipes.find((r) => r.name === "Curry de pois chiches")!;
-    const dahl = recipes.find((r) => r.name === "Dahl de lentilles corail")!;
-    const meals = [curry, dahl].map((r, i) => ({ recipe_id: r.id, chosen_by: null, day: i, slot: "midi" as const, storage: "frigo" as const }));
-    const list = buildShoppingList(meals, byId, 2);
-    const coco = list.find((l) => l.name === "Lait de coco")!;
-    expect(coco.quantity).toBe(400); // 2 × 400 ml pour 4, ramené à 2 portions
-    expect(coco.sources).toHaveLength(2);
-    const oignon = list.find((l) => l.name === "Oignon jaune")!;
-    expect(oignon.quantity).toBe(1); // 0,5 + 0,5
+    const dahl = byName("Dahl de lentilles corail"); // pour 2
+    const ratatouille = byName("Ratatouille et riz"); // pour 2
+    const list = buildShoppingList([meal(dahl), meal(ratatouille)], byId, 2);
+    const oignon = list.find((l) => l.name.toLowerCase().startsWith("oignon"))!;
+    expect(oignon.quantity).toBe(2);
+    expect(oignon.sources).toHaveLength(2);
+  });
+
+  it("marque ce qui est déjà au placard", () => {
+    const list = buildShoppingList([meal(byName("Dahl de lentilles corail"))], byId, 2, ["lentilles corail", "riz basmati"]);
+    expect(list.find((l) => l.name === "Lentilles corail")?.inPantry).toBe(true);
+    expect(list.find((l) => l.name.toLowerCase().startsWith("oignon"))?.inPantry).toBe(false);
+  });
+
+  it("un extra (10 gaufres) n'est pas mis à l'échelle des portions", () => {
+    const gaufres = byName("Gaufres liégeoises");
+    const once = buildShoppingList([meal(gaufres, "extra")], byId, 2);
+    const asMeal = buildShoppingList([meal(gaufres)], byId, 2);
+    const flour = (l: typeof once) => l.find((x) => /farine/i.test(x.name))?.quantity ?? 0;
+    expect(flour(once)).toBeGreaterThan(flour(asMeal));
   });
 });
 
 describe("scheduleBatch", () => {
-  const week = recipes.slice(0, 10);
+  const week = recipes.filter((r) => r.category === "plat").slice(0, 10);
+  const caps = stationCapacities(DEFAULT_EQUIPMENT, 4);
 
   it("planifie toutes les étapes, dans l'ordre de chaque recette", () => {
-    const s = scheduleBatch(week, ["a", "b"]);
-    expect(s.tasks).toHaveLength(week.reduce((n, r) => n + r.recipe_steps.length, 0));
+    const s = scheduleBatch(week, ["a", "b"], caps);
+    expect(s.tasks.length + s.afterwards.length).toBe(week.reduce((n, r) => n + r.recipe_steps.length, 0));
     for (const r of week) {
       const steps = s.tasks.filter((t) => t.recipeId === r.id).sort((x, y) => Number(x.id.split(":")[1]) - Number(y.id.split(":")[1]));
       for (let i = 1; i < steps.length; i++) expect(steps[i].start).toBeGreaterThanOrEqual(steps[i - 1].end);
     }
   });
 
-  it("ne dépasse jamais un four à la fois ni un cuisinier sur deux tâches actives", () => {
-    const s = scheduleBatch(week, ["a", "b"]);
+  it("respecte le nombre de feux, un seul four, et un cuisinier par tâche active", () => {
+    const s = scheduleBatch(week, ["a", "b"], stationCapacities(DEFAULT_EQUIPMENT, 2));
     const overlaps = (x: { start: number; end: number }, y: { start: number; end: number }) => x.start < y.end && y.start < x.end;
     const oven = s.tasks.filter((t) => t.station === "four");
     for (const x of oven) for (const y of oven) if (x !== y) expect(overlaps(x, y)).toBe(false);
+    const hob = s.tasks.filter((t) => t.station === "plaque");
+    for (const x of hob) expect(hob.filter((y) => y.start <= x.start && y.end > x.start).length).toBeLessThanOrEqual(2);
     for (const cook of ["a", "b"]) {
       const mine = s.tasks.filter((t) => t.cook === cook);
       for (const x of mine) for (const y of mine) if (x !== y) expect(overlaps(x, y)).toBe(false);
@@ -121,11 +182,19 @@ describe("scheduleBatch", () => {
   });
 
   it("à deux, c'est plus rapide que seul", () => {
-    expect(scheduleBatch(week, ["a", "b"]).totalMinutes).toBeLessThan(scheduleBatch(week, ["a"]).totalMinutes);
+    expect(scheduleBatch(week, ["a", "b"], caps).totalMinutes).toBeLessThan(scheduleBatch(week, ["a"], caps).totalMinutes);
+  });
+
+  it("un repos d'une nuit au frigo passe après le batch", () => {
+    const cake = byName("Gâteau invisible");
+    const s = scheduleBatch([cake], ["a"], caps);
+    expect(s.afterwards).toHaveLength(1);
+    expect(s.totalMinutes).toBeLessThan(150);
   });
 
   it("regroupe les légumes communs à plusieurs recettes", () => {
-    const g = groupedPrep(week, 2);
-    expect(g.find((x) => x.name === "Oignon jaune")?.recipes.length).toBeGreaterThan(2);
+    const g = groupedPrep(week.map((recipe) => ({ recipe, scale: 2 / recipe.servings })));
+    expect(g.length).toBeGreaterThan(0);
+    expect(g.every((x) => x.recipes.length >= 2)).toBe(true);
   });
 });

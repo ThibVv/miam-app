@@ -4,9 +4,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { generateWeek } from "@/app/actions";
-import type { Criteria, Member, PersonCriteria } from "@/lib/types";
+import type { Category, Criteria, PantryItem, Person, PersonCriteria } from "@/lib/types";
 import { Avatar, PageHeader } from "@/components/ui";
 import { DiceIcon } from "@/components/icons";
+import { PantryEditor } from "@/components/PantryEditor";
 import { formatWeekRange } from "@/lib/week";
 
 const TIMES: { label: string; value: number | null }[] = [
@@ -17,6 +18,7 @@ const TIMES: { label: string; value: number | null }[] = [
 ];
 
 const BALANCE_TAGS = ["végé", "poisson"];
+const EXTRA_LABELS: Record<string, string> = { "petit-dej": "Petit-déj", gouter: "Goûter" };
 
 function Stepper({
   value,
@@ -31,30 +33,34 @@ function Stepper({
   min?: number;
   max?: number;
   label: string;
-  /** Ce qu'on compte, pour les lecteurs d'écran (ex. « recettes de Thibault ») */
+  /** Ce qu'on compte, pour les lecteurs d'écran (ex. « recettes pour Thibault ») */
   name: string;
 }) {
   return (
     <span className="flex items-center gap-1">
-      <button onClick={() => onChange(Math.max(min, value - 1))} aria-label={`Moins de ${name}`} className="size-11 rounded-xl border border-line bg-surface text-lg">−</button>
-      <span aria-live="polite" className="w-[72px] text-center text-sm font-semibold">{value} {label}</span>
-      <button onClick={() => onChange(Math.min(max, value + 1))} aria-label={`Plus de ${name}`} className="size-11 rounded-xl border border-line bg-surface text-lg">+</button>
+      <button type="button" onClick={() => onChange(Math.max(min, value - 1))} disabled={value <= min} aria-label={`Moins de ${name}`} className="size-11 rounded-xl border border-line bg-surface text-lg disabled:opacity-40">−</button>
+      <span aria-live="polite" className="min-w-[44px] text-center text-sm font-semibold">{value} {label}</span>
+      <button type="button" onClick={() => onChange(Math.min(max, value + 1))} disabled={value >= max} aria-label={`Plus de ${name}`} className="size-11 rounded-xl border border-line bg-surface text-lg disabled:opacity-40">+</button>
     </span>
   );
 }
 
 export function GenerateForm({
-  members,
+  people,
   tags,
   initial,
   weekStart: defaultWeek,
   recipeCount,
+  extrasAvailable,
+  pantry,
 }: {
-  members: Member[];
+  people: Person[];
   tags: string[];
   initial: Criteria;
   weekStart: string;
   recipeCount: number;
+  extrasAvailable: Partial<Record<Category, number>>;
+  pantry: PantryItem[];
 }) {
   const router = useRouter();
   const [criteria, setCriteria] = useState<Criteria>(initial);
@@ -64,9 +70,10 @@ export function GenerateForm({
   const [pending, start] = useTransition();
 
   const total = criteria.people.reduce((n, p) => n + p.count, 0);
+  const extrasTotal = Object.values(criteria.extras).reduce((n, v) => n + (v ?? 0), 0);
   const balanceTags = BALANCE_TAGS.filter((t) => tags.includes(t));
-  const setPerson = (userId: string, patch: Partial<PersonCriteria>) =>
-    setCriteria((c) => ({ ...c, people: c.people.map((p) => (p.userId === userId ? { ...p, ...patch } : p)) }));
+  const setPerson = (personId: string, patch: Partial<PersonCriteria>) =>
+    setCriteria((c) => ({ ...c, people: c.people.map((p) => (p.personId === personId ? { ...p, ...patch } : p)) }));
 
   function addExclusion() {
     const v = exclude.trim().toLowerCase();
@@ -91,27 +98,44 @@ export function GenerateForm({
       <PageHeader kicker={`Semaine du ${formatWeekRange(weekStart)}`} title="Nouvelle semaine" />
 
       <section className="card flex flex-col gap-2.5 p-4">
+        <div className="flex items-center justify-between">
+          <h2 className="section-title">Fonds de placard</h2>
+          <label className="flex items-center gap-2 text-xs text-ink-2">
+            En tenir compte
+            <input
+              type="checkbox"
+              checked={criteria.usePantry}
+              onChange={(e) => setCriteria((c) => ({ ...c, usePantry: e.target.checked }))}
+              className="size-5"
+            />
+          </label>
+        </div>
+        <PantryEditor items={pantry} compact />
+      </section>
+
+      <section className="card flex flex-col gap-2.5 p-4">
         <h2 className="section-title">Qui choisit quoi</h2>
-        {members.map((m) => {
-          const person = criteria.people.find((p) => p.userId === m.user_id)!;
+        {people.map((person) => {
+          const pc = criteria.people.find((p) => p.personId === person.id)!;
           return (
-            <div key={m.user_id} className="flex flex-col gap-2 border-b border-line-soft pb-3 last:border-0 last:pb-0">
+            <div key={person.id} className="flex flex-col gap-2 border-b border-line-soft pb-3 last:border-0 last:pb-0">
               <div className="flex items-center justify-between gap-2">
                 <span className="flex items-center gap-2.5 text-[15px] font-medium">
-                  <Avatar member={m} />
-                  {m.display_name}
+                  <Avatar person={person} />
+                  {person.name}
                 </span>
-                <Stepper value={person.count} onChange={(v) => setPerson(m.user_id, { count: v })} label="recettes" name={`recettes pour ${m.display_name}`} />
+                <Stepper value={pc.count} onChange={(v) => setPerson(person.id, { count: v })} label="plats" name={`plats pour ${person.name}`} />
               </div>
               {tags.length > 0 && (
-                <div className="flex flex-wrap gap-1.5" role="group" aria-label={`Envies de ${m.display_name}`}>
+                <div className="flex flex-wrap gap-1.5" role="group" aria-label={`Envies de ${person.name}`}>
                   {tags.map((t) => {
-                    const on = person.tags.includes(t);
+                    const on = pc.tags.includes(t);
                     return (
                       <button
+                        type="button"
                         key={t}
                         aria-pressed={on}
-                        onClick={() => setPerson(m.user_id, { tags: on ? person.tags.filter((x) => x !== t) : [...person.tags, t] })}
+                        onClick={() => setPerson(person.id, { tags: on ? pc.tags.filter((x) => x !== t) : [...pc.tags, t] })}
                         className={`min-h-8 rounded-full border px-2.5 text-xs font-medium ${
                           on ? "border-brand bg-brand-soft text-brand-dark" : "border-line bg-surface text-ink-2"
                         }`}
@@ -126,8 +150,27 @@ export function GenerateForm({
           );
         })}
         <span className="text-xs text-muted">
-          {total} recettes × {members.length} portion{members.length > 1 ? "s" : ""} = {total * members.length} tups · {recipeCount} recettes dans la bibliothèque
+          {total} plats × {people.length} portion{people.length > 1 ? "s" : ""} = {total * people.length} tups · {recipeCount} plats dans la bibliothèque
         </span>
+      </section>
+
+      <section className="card flex flex-col gap-2.5 p-4">
+        <h2 className="section-title">En plus des repas</h2>
+        {(["petit-dej", "gouter"] as const).map((cat) => (
+          <div key={cat} className="flex items-center justify-between gap-2">
+            <span className="flex flex-col">
+              <span className="text-sm font-medium">{EXTRA_LABELS[cat]}</span>
+              <span className="text-xs text-muted">{extrasAvailable[cat] ?? 0} recettes disponibles</span>
+            </span>
+            <Stepper
+              value={criteria.extras[cat] ?? 0}
+              onChange={(v) => setCriteria((c) => ({ ...c, extras: { ...c.extras, [cat]: v } }))}
+              max={Math.min(3, extrasAvailable[cat] ?? 0)}
+              label=""
+              name={`recettes ${EXTRA_LABELS[cat]}`}
+            />
+          </div>
+        ))}
       </section>
 
       <section className="card flex flex-col gap-2.5 p-4">
@@ -137,12 +180,11 @@ export function GenerateForm({
             const on = criteria.maxMinutes === t.value;
             return (
               <button
+                type="button"
                 key={t.label}
                 aria-pressed={on}
                 onClick={() => setCriteria((c) => ({ ...c, maxMinutes: t.value }))}
-                className={`min-h-11 rounded-xl border font-semibold ${t.value ? "text-sm" : "text-xs"} ${
-                  on ? "border-brand bg-brand text-white" : "border-line bg-surface"
-                }`}
+                className={`min-h-11 rounded-xl border font-semibold ${t.value ? "text-sm" : "text-xs"} ${on ? "border-brand bg-brand text-white" : "border-line bg-surface"}`}
               >
                 {t.label}
               </button>
@@ -163,10 +205,12 @@ export function GenerateForm({
       </section>
 
       <section className="card flex flex-col gap-2.5 p-4">
-        <h2 className="section-title">Exclure</h2>
+        <h2 className="section-title">Exclure cette semaine</h2>
+        <p className="text-xs text-muted">Les « n&apos;aime pas » de chacun sont déjà exclus (page Foyer).</p>
         <div className="flex flex-wrap gap-1.5">
           {criteria.excludeIngredients.map((e) => (
             <button
+              type="button"
               key={e}
               onClick={() => setCriteria((c) => ({ ...c, excludeIngredients: c.excludeIngredients.filter((x) => x !== e) }))}
               aria-label={`Ne plus exclure ${e}`}
@@ -186,7 +230,7 @@ export function GenerateForm({
             placeholder="champignons, porc…"
             className="field"
           />
-          <button onClick={addExclusion} className="btn-secondary shrink-0">Ajouter</button>
+          <button type="button" onClick={addExclusion} className="btn-secondary shrink-0">Ajouter</button>
         </div>
       </section>
 
@@ -235,9 +279,9 @@ export function GenerateForm({
         </div>
       )}
 
-      <button onClick={submit} disabled={pending || total === 0} className="btn-primary">
+      <button type="button" onClick={submit} disabled={pending || total === 0} className="btn-primary">
         <DiceIcon size={20} />
-        {pending ? "Génération…" : "Générer ma semaine"}
+        {pending ? "Génération…" : `Générer ma semaine${extrasTotal ? ` (+${extrasTotal} extra${extrasTotal > 1 ? "s" : ""})` : ""}`}
       </button>
     </>
   );

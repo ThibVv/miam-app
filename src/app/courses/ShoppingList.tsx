@@ -3,19 +3,19 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { addShoppingItem, removeShoppingItem, toggleShoppingItem } from "@/app/actions";
-import { AISLES, type Member, type ShoppingItem } from "@/lib/types";
+import { AISLES, type Person, type ShoppingItem } from "@/lib/types";
 import { formatQuantity } from "@/lib/units";
 import { Avatar } from "@/components/ui";
 import { TrashIcon } from "@/components/icons";
 
 type GroupBy = "aisle" | "recipe";
 
-export function ShoppingList({ planId, initialItems, members, userId }: { planId: string; initialItems: ShoppingItem[]; members: Member[]; userId: string }) {
+export function ShoppingList({ planId, initialItems, people, userId }: { planId: string; initialItems: ShoppingItem[]; people: Person[]; userId: string }) {
   const [items, setItems] = useState(initialItems);
   const [groupBy, setGroupBy] = useState<GroupBy>("aisle");
   const [newItem, setNewItem] = useState("");
   const [copied, setCopied] = useState(false);
-  const memberById = new Map(members.map((m) => [m.user_id, m]));
+  const personByUser = new Map(people.filter((p) => p.user_id).map((p) => [p.user_id!, p]));
   const refetchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Synchronisation en direct : à chaque changement côté base, on relit la liste
@@ -110,7 +110,7 @@ export function ShoppingList({ planId, initialItems, members, userId }: { planId
           <h2 className="section-title">{group}</h2>
           <div className="card rounded-[14px] px-3.5">
             {list.map((item) => {
-              const by = item.checked_by ? memberById.get(item.checked_by) : undefined;
+              const by = item.checked_by ? personByUser.get(item.checked_by) : undefined;
               return (
                 <div key={`${group}-${item.id}`} className="flex min-h-[50px] items-center gap-3 border-b border-line-soft last:border-0">
                   <label className="flex min-h-[50px] min-w-0 flex-1 cursor-pointer items-center gap-3">
@@ -124,7 +124,8 @@ export function ShoppingList({ planId, initialItems, members, userId }: { planId
                       )}
                     </span>
                   </label>
-                  {item.checked && by && by.user_id !== userId && <Avatar member={by} size={20} />}
+                  {item.in_pantry && <span className="shrink-0 rounded-full bg-brand-soft px-2 py-0.5 text-[11px] text-brand-dark">au placard</span>}
+                  {item.checked && !item.in_pantry && by && by.user_id !== userId && <Avatar person={by} size={20} />}
                   {item.quantity != null && <span className="shrink-0 text-sm font-semibold text-ink-2">{formatQuantity(item.quantity, item.unit)}</span>}
                   {item.manual && (
                     <button onClick={() => removeShoppingItem(item.id)} aria-label={`Retirer ${item.name}`} className="flex size-9 items-center justify-center rounded-lg text-muted hover:bg-chip">

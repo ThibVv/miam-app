@@ -1,11 +1,11 @@
 "use client";
 
 import { useMemo, useState, useSyncExternalStore } from "react";
-import { STATIONS, type Member, type Station } from "@/lib/types";
+import type { Person, Station } from "@/lib/types";
+import { stationLabel } from "@/lib/equipment";
 import { formatClock, formatMinutes, type GroupedPrep, type Schedule, type ScheduledTask } from "@/lib/planner/schedule";
 import { Avatar } from "@/components/ui";
 
-const STATION_LABEL = Object.fromEntries(STATIONS.map((s) => [s.value, s.label])) as Record<Station, string>;
 
 const PROGRESS_EVENT = "miam-prep-progress";
 
@@ -40,13 +40,13 @@ function lanesFor(tasks: ScheduledTask[]): ScheduledTask[][] {
 export function PrepGuide({
   storageKey,
   schedule,
-  members,
+  people,
   groupedPrep,
   freezerMeals,
 }: {
   storageKey: string;
   schedule: Schedule;
-  members: Member[];
+  people: Person[];
   groupedPrep: GroupedPrep[];
   freezerMeals: string[];
 }) {
@@ -54,7 +54,7 @@ export function PrepGuide({
   const saved = useSyncExternalStore(subscribe, () => readSaved(storageKey), () => null);
   const done = useMemo(() => new Set<string>(saved ? JSON.parse(saved) : []), [saved]);
   const [onlyCook, setOnlyCook] = useState<string | null>(null);
-  const memberById = new Map(members.map((m) => [m.user_id, m]));
+  const personById = new Map(people.map((p) => [p.id, p]));
   const total = Math.max(schedule.totalMinutes, 1);
 
   function toggle(id: string) {
@@ -69,7 +69,9 @@ export function PrepGuide({
     window.dispatchEvent(new Event(PROGRESS_EVENT));
   }
 
-  const stations = (["four", "plaque", "plan", "repos"] as Station[])
+  const BASE: Station[] = ["four", "plaque", "plan", "repos"];
+  const appliances = [...new Set(schedule.tasks.map((t) => t.station))].filter((s) => !BASE.includes(s));
+  const stations = [...BASE.slice(0, 2), ...appliances, ...BASE.slice(2)]
     .map((s) => ({ station: s, lanes: lanesFor(schedule.tasks.filter((t) => t.station === s)) }))
     .filter((s) => s.lanes.length);
 
@@ -83,22 +85,22 @@ export function PrepGuide({
         <div className="flex items-center justify-between">
           <h2 className="section-title">Postes de cuisson</h2>
           <span className="flex gap-2.5 text-xs text-ink-2">
-            {members.map((m) => (
-              <span key={m.user_id} className="flex items-center gap-1">
+            {people.map((m) => (
+              <span key={m.id} className="flex items-center gap-1">
                 <span className="size-2.5 rounded-[3px]" style={{ background: m.color }} />
-                {m.display_name}
+                {m.name}
               </span>
             ))}
           </span>
         </div>
         {stations.map(({ station, lanes }) => (
           <div key={station} className="flex items-start gap-2">
-            <span className="w-16 shrink-0 pt-0.5 text-xs text-ink-2">{STATION_LABEL[station]}</span>
+            <span className="w-16 shrink-0 pt-0.5 text-xs text-ink-2">{stationLabel(station)}</span>
             <div className="flex flex-1 flex-col gap-0.5">
               {lanes.map((lane, i) => (
                 <div key={i} className="relative h-[18px] rounded-[5px] bg-[#f0f2ee]">
                   {lane.map((t) => {
-                    const cook = t.cook ? memberById.get(t.cook) : undefined;
+                    const cook = t.cook ? personById.get(t.cook) : undefined;
                     return (
                       <span
                         key={t.id}
@@ -145,19 +147,19 @@ export function PrepGuide({
       <section className="flex flex-col gap-2">
         <div className="flex items-center justify-between">
           <h2 className="section-title">Étapes</h2>
-          {members.length > 1 && (
+          {people.length > 1 && (
             <div className="flex gap-1">
               <button onClick={() => setOnlyCook(null)} aria-pressed={!onlyCook} className={`min-h-9 rounded-full px-3 text-xs ${!onlyCook ? "bg-ink font-semibold text-white" : "bg-surface text-ink-2"}`}>
                 Tout
               </button>
-              {members.map((m) => (
+              {people.map((m) => (
                 <button
-                  key={m.user_id}
-                  onClick={() => setOnlyCook(m.user_id)}
-                  aria-pressed={onlyCook === m.user_id}
-                  className={`min-h-9 rounded-full px-3 text-xs ${onlyCook === m.user_id ? "bg-ink font-semibold text-white" : "bg-surface text-ink-2"}`}
+                  key={m.id}
+                  onClick={() => setOnlyCook(m.id)}
+                  aria-pressed={onlyCook === m.id}
+                  className={`min-h-9 rounded-full px-3 text-xs ${onlyCook === m.id ? "bg-ink font-semibold text-white" : "bg-surface text-ink-2"}`}
                 >
-                  {m.display_name}
+                  {m.name}
                 </button>
               ))}
             </div>
@@ -165,7 +167,7 @@ export function PrepGuide({
         </div>
 
         {visibleTasks.map((t) => {
-          const cook = t.cook ? memberById.get(t.cook) : undefined;
+          const cook = t.cook ? personById.get(t.cook) : undefined;
           const isDone = done.has(t.id);
           const isNext = nextTask?.id === t.id;
           return (
@@ -175,13 +177,13 @@ export function PrepGuide({
             >
               <div className="flex w-10 shrink-0 flex-col items-center gap-1.5">
                 <span className="text-[13px] font-semibold text-ink-2">{formatClock(t.start)}</span>
-                {cook ? <Avatar member={cook} size={24} /> : <span className="text-[10px] text-muted">auto</span>}
+                {cook ? <Avatar person={cook} size={24} /> : <span className="text-[10px] text-muted">auto</span>}
               </div>
               <div className="flex min-w-0 flex-1 flex-col gap-1">
                 <span className={`text-[15px] font-semibold ${isDone ? "text-muted line-through" : ""}`}>{t.recipeName}</span>
                 <span className="text-[13px] leading-snug text-muted">{t.text}</span>
                 <span className="mt-0.5 flex flex-wrap gap-1.5">
-                  <span className="chip">{STATION_LABEL[t.station]}</span>
+                  <span className="chip">{stationLabel(t.station)}</span>
                   <span className="chip">{formatMinutes(t.end - t.start)}</span>
                   {!t.handsBusy && <span className="rounded-full bg-brand-soft px-2 py-0.5 text-[11px] text-brand-dark">Mains libres</span>}
                 </span>
@@ -198,6 +200,17 @@ export function PrepGuide({
             {freezerMeals.length > 0 && ` Au congélateur : ${[...new Set(freezerMeals)].join(", ")}.`}
           </span>
         </div>
+
+        {schedule.afterwards.length > 0 && (
+          <div className="card flex flex-col gap-1 rounded-[14px] p-3">
+            <span className="text-[15px] font-semibold">Après le batch</span>
+            {schedule.afterwards.map((a) => (
+              <span key={a.recipeName + a.text} className="text-[13px] text-muted">
+                <strong className="font-medium text-ink-2">{a.recipeName}</strong> : {a.text}
+              </span>
+            ))}
+          </div>
+        )}
       </section>
     </>
   );

@@ -2,7 +2,7 @@ import { cache } from "react";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { weeksBetween } from "@/lib/week";
-import type { Household, MealPlan, Member, Recipe, ShoppingItem } from "@/lib/types";
+import type { Household, MealPlan, PantryItem, Person, Recipe, ShoppingItem } from "@/lib/types";
 
 const RECIPE_SELECT = "*, recipe_ingredients(*), recipe_steps(*)";
 
@@ -12,26 +12,27 @@ function sortChildren(r: Recipe): Recipe {
   return r;
 }
 
-/** Utilisateur connecté, son foyer et les membres. Redirige si l'un manque. */
+/** Utilisateur connecté, son foyer et les personnes du foyer. Redirige si l'un manque. */
 export const getContext = cache(async () => {
   const supabase = await createClient();
   const { data: claims } = await supabase.auth.getClaims();
   const userId = claims?.claims.sub;
   if (!userId) redirect("/connexion");
 
-  const { data: me } = await supabase.from("household_members").select("household_id").eq("user_id", userId).maybeSingle();
+  const { data: me } = await supabase.from("household_people").select("id, household_id").eq("user_id", userId).maybeSingle();
   if (!me) redirect("/foyer/nouveau");
 
-  const [{ data: household }, { data: members }] = await Promise.all([
-    supabase.from("households").select("id, name, invite_code").eq("id", me.household_id).single(),
-    supabase.from("household_members").select("user_id, display_name, color").eq("household_id", me.household_id).order("joined_at"),
+  const [{ data: household }, { data: people }] = await Promise.all([
+    supabase.from("households").select("id, name, invite_code, equipment, burners").eq("id", me.household_id).single(),
+    supabase.from("household_people").select("*").eq("household_id", me.household_id).order("position"),
   ]);
 
   return {
     supabase,
     userId,
+    meId: me.id as string,
     household: household as Household,
-    members: (members ?? []) as Member[],
+    people: (people ?? []) as Person[],
   };
 });
 
@@ -64,6 +65,12 @@ export async function getShoppingItems(planId: string): Promise<ShoppingItem[]> 
   const { supabase } = await getContext();
   const { data } = await supabase.from("shopping_items").select("*").eq("plan_id", planId).order("name");
   return (data ?? []) as ShoppingItem[];
+}
+
+export async function getPantry(): Promise<PantryItem[]> {
+  const { supabase, household } = await getContext();
+  const { data } = await supabase.from("pantry_items").select("id, name").eq("household_id", household.id).order("created_at");
+  return (data ?? []) as PantryItem[];
 }
 
 /** Pour chaque recette, nombre de semaines depuis son dernier passage au planning. */

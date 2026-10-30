@@ -4,11 +4,15 @@ import { parseIngredientLine, parseIsoDuration, parseRecipeFromHtml } from "@/li
 describe("parseIngredientLine", () => {
   it.each([
     ["200 g de lentilles corail", 200, "g", "Lentilles corail", "Épicerie"],
-    ["1,5 kg de courge butternut", 1.5, "g", "Courge butternut", "Fruits & légumes"],
+    ["1,5 kg de courge butternut", 1.5, "kg", "Courge butternut", "Fruits & légumes"],
     ["2 c. à s. de sauce soja", 2, "c. à s.", "Sauce soja", "Épicerie"],
     ["½ botte de coriandre", 0.5, "botte", "Coriandre", "Fruits & légumes"],
     ["3 oignons", 3, "", "Oignons", "Fruits & légumes"],
-    ["20 cl de crème fraîche", 20, "ml", "Crème fraîche", "Crèmerie"],
+    ["20 cl de crème fraîche", 20, "cl", "Crème fraîche", "Crèmerie"],
+    ["Une pincée de muscade", 1, "pincée", "Muscade", "Autre"],
+    ["2 cm de gingembre frais", 2, "cm", "Gingembre frais", "Fruits & légumes"],
+    ["Petit bouquet de coriandre", 1, "bouquet", "Coriandre", "Fruits & légumes"],
+    ["Grosse c. à s. de beurre de cacahuète", 1, "c. à s.", "Beurre de cacahuète", "Épicerie sucrée"],
   ])("%s", (line, quantity, unit, name, aisle) => {
     const ing = parseIngredientLine(line);
     expect(ing).toMatchObject({ quantity, unit, name, aisle });

@@ -99,18 +99,19 @@ export function PrepGuide({
             <div className="flex flex-1 flex-col gap-0.5">
               {lanes.map((lane, i) => (
                 <div key={i} className="relative h-[18px] rounded-[5px] bg-[#f0f2ee]">
-                  {lane.map((t) => {
+                  {lane.map((t, j) => {
                     const cook = t.cook ? personById.get(t.cook) : undefined;
                     return (
                       <span
                         key={t.id}
                         title={`${t.recipeName} · ${t.text}`}
-                        className="absolute top-[3px] h-3 rounded"
+                        className="bar absolute top-[3px] h-3 rounded transition-opacity"
                         style={{
                           left: `${(t.start / total) * 100}%`,
                           width: `calc(${((t.end - t.start) / total) * 100}% - 2px)`,
                           background: cook?.color ?? "#a9b1ab",
                           opacity: done.has(t.id) ? 0.35 : 1,
+                          ["--i" as string]: Math.min(j, 12),
                         }}
                       />
                     );

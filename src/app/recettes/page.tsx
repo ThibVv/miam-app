@@ -1,11 +1,11 @@
 import Link from "next/link";
-import { getContext, getRecipes } from "@/lib/data";
+import { getContext, getRecipeSummaries } from "@/lib/data";
 import { AppShell, PageHeader } from "@/components/ui";
 import { PlusIcon } from "@/components/icons";
 import { RecipeLibrary } from "./RecipeLibrary";
 
 export default async function RecipesPage() {
-  const [{ people }, recipes] = await Promise.all([getContext(), getRecipes()]);
+  const [{ people }, recipes] = await Promise.all([getContext(), getRecipeSummaries()]);
 
   return (
     <AppShell>

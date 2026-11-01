@@ -2,9 +2,13 @@ import { cache } from "react";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { weeksBetween } from "@/lib/week";
-import type { Household, MealPlan, PantryItem, Person, Recipe, ShoppingItem } from "@/lib/types";
+import type { Category, Household, MealPlan, PantryItem, Person, Recipe, RecipeSummary, ShoppingItem } from "@/lib/types";
 
 const RECIPE_SELECT = "*, recipe_ingredients(*), recipe_steps(*)";
+
+/** Juste ce qu'affichent les listes : pas d'étapes, pas de quantités. */
+const SUMMARY_SELECT =
+  "id, name, category, servings, yield_label, prep_minutes, cook_minutes, fridge_days, freezable, tags, author_id, image_url, recipe_ingredients(name)";
 
 function sortChildren(r: Recipe): Recipe {
   r.recipe_ingredients.sort((a, b) => a.position - b.position);
@@ -45,11 +49,41 @@ export const getContext = cache(async () => {
   };
 });
 
-export async function getRecipes(): Promise<Recipe[]> {
+/** Toute la bibliothèque, en entier : réservé à la génération, qui a besoin des étapes et des quantités. */
+export const getRecipes = cache(async (): Promise<Recipe[]> => {
   const { supabase, household } = await getContext();
   const { data } = await supabase.from("recipes").select(RECIPE_SELECT).eq("household_id", household.id).order("name");
   return ((data ?? []) as Recipe[]).map(sortChildren);
+});
+
+/** La bibliothèque pour l'affichage en liste : ~10 fois plus léger que `getRecipes`. */
+export const getRecipeSummaries = cache(async (): Promise<RecipeSummary[]> => {
+  const { supabase, household } = await getContext();
+  const { data } = await supabase.from("recipes").select(SUMMARY_SELECT).eq("household_id", household.id).order("name");
+  return (data ?? []) as unknown as RecipeSummary[];
+});
+
+/** Les recettes d'un planning, en entier (étapes pour le batch, quantités pour les courses). */
+export async function getPlanRecipes(recipeIds: string[]): Promise<Recipe[]> {
+  if (!recipeIds.length) return [];
+  const { supabase } = await getContext();
+  const { data } = await supabase.from("recipes").select(RECIPE_SELECT).in("id", recipeIds);
+  return ((data ?? []) as Recipe[]).map(sortChildren);
 }
+
+/** Tags disponibles et nombre de recettes par catégorie, sans rapatrier les recettes. */
+export const getRecipeFacets = cache(async (): Promise<{ tags: string[]; counts: Record<Category, number> }> => {
+  const { supabase, household } = await getContext();
+  const { data } = await supabase.from("recipes").select("category, tags").eq("household_id", household.id);
+  const rows = (data ?? []) as { category: Category; tags: string[] }[];
+  const counts = { plat: 0, "petit-dej": 0, gouter: 0 } as Record<Category, number>;
+  const tags = new Set<string>();
+  for (const r of rows) {
+    counts[r.category] = (counts[r.category] ?? 0) + 1;
+    if (r.category === "plat") for (const t of r.tags) tags.add(t);
+  }
+  return { tags: [...tags].sort((a, b) => a.localeCompare(b, "fr")), counts };
+});
 
 export async function getRecipe(id: string): Promise<Recipe | null> {
   const { supabase } = await getContext();

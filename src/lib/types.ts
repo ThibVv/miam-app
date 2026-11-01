@@ -88,12 +88,50 @@ export interface Recipe {
   equipment: string[];
   source_url: string | null;
   notes: string | null;
+  /** Photo du plat, et son crédit : la licence des banques d'images l'exige */
+  image_url?: string | null;
+  image_author?: string | null;
+  image_source?: string | null;
   recipe_ingredients: Ingredient[];
   recipe_steps: Step[];
 }
 
 /** Recette sans identifiants base, utilisée pour la création, l'import et les recettes de départ. */
 export type RecipeDraft = Omit<Recipe, "id" | "household_id" | "author_id">;
+
+/**
+ * Recette allégée pour les listes : ni étapes ni quantités, les ingrédients réduits
+ * à leur nom (la recherche en a besoin). Évite de rapatrier toute la bibliothèque.
+ */
+export interface RecipeSummary {
+  id: string;
+  name: string;
+  category: Category;
+  servings: number;
+  yield_label: string | null;
+  prep_minutes: number;
+  cook_minutes: number;
+  fridge_days: number;
+  freezable: boolean;
+  tags: string[];
+  author_id: string | null;
+  image_url: string | null;
+  recipe_ingredients: { name: string }[];
+}
+
+/** Recette proposée dans le sélecteur : juste de quoi choisir en connaissance de cause. */
+export interface RecipeChoice {
+  id: string;
+  name: string;
+  category: Category;
+  tags: string[];
+  servings: number;
+  yield_label: string | null;
+  prep_minutes: number;
+  cook_minutes: number;
+  fridge_days: number;
+  freezable: boolean;
+}
 
 export interface PlanMeal {
   id?: string;

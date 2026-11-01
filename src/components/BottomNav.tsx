@@ -27,11 +27,13 @@ export function BottomNav() {
               key={href}
               href={href}
               aria-current={active ? "page" : undefined}
-              className={`flex min-h-11 flex-1 flex-col items-center justify-center gap-1 text-[11px] ${
+              className={`flex min-h-11 flex-1 flex-col items-center justify-center gap-1 text-[11px] transition-colors active:scale-95 ${
                 active ? "font-semibold text-brand" : "text-muted"
               }`}
             >
-              <Icon />
+              <span className={`transition-transform duration-200 ${active ? "-translate-y-px scale-110" : ""}`}>
+                <Icon />
+              </span>
               {label}
             </Link>
           );

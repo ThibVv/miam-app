@@ -5,7 +5,7 @@ import { BottomNav } from "@/components/BottomNav";
 export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <>
-      <main className="mx-auto flex min-h-dvh max-w-md flex-col gap-3.5 px-5 pt-6 pb-28">{children}</main>
+      <main className="page-enter mx-auto flex min-h-dvh max-w-md flex-col gap-3.5 px-5 pt-6 pb-28">{children}</main>
       <BottomNav />
     </>
   );
@@ -46,6 +46,32 @@ export function PeopleBadge({ people }: { people: Person[] }) {
         </span>
       ))}
     </Link>
+  );
+}
+
+/** Bloc gris animé, affiché le temps que les données arrivent. */
+export function Skeleton({ className = "" }: { className?: string }) {
+  return <span aria-hidden className={`skeleton block ${className}`} />;
+}
+
+/**
+ * Squelette d'une page : la navigation et le titre restent en place,
+ * seul le contenu est remplacé — le changement d'onglet paraît immédiat.
+ */
+export function PageSkeleton({ title, cards = 4, height = "h-20" }: { title: string; cards?: number; height?: string }) {
+  return (
+    <AppShell>
+      <header className="flex flex-col gap-1.5">
+        <Skeleton className="h-3.5 w-28" />
+        <h1 className="font-display text-[30px] leading-tight font-bold tracking-[-0.5px] text-[#c9cfc8]">{title}</h1>
+      </header>
+      <span className="sr-only" role="status">
+        Chargement…
+      </span>
+      {Array.from({ length: cards }, (_, i) => (
+        <Skeleton key={i} className={`${height} rounded-[14px]`} />
+      ))}
+    </AppShell>
   );
 }
 

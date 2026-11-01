@@ -6,8 +6,13 @@ import { CATEGORIES, type Ingredient } from "@/lib/types";
 import { EQUIPMENT_BY_ID, hasEquipmentFor, stationLabel } from "@/lib/equipment";
 import { formatQuantity } from "@/lib/units";
 import { formatMinutes } from "@/lib/planner/schedule";
+import { recipeNutrition } from "@/lib/nutrition/analyze";
+import { PHOTO_SOURCE_NAME } from "@/lib/images/photo";
 import { AppShell, Avatar } from "@/components/ui";
-import { ChevronLeft, TrashIcon } from "@/components/icons";
+import { NutritionCard } from "@/components/NutritionCard";
+import { RecipePhoto } from "@/components/RecipePhoto";
+import { RecipePhotoButton } from "@/components/PhotoButtons";
+import { AisleIcon, ChevronLeft, TrashIcon } from "@/components/icons";
 import { ConfirmSubmit } from "@/components/ConfirmSubmit";
 import { CopyRecipeButton } from "./CopyRecipeButton";
 
@@ -46,6 +51,8 @@ export default async function RecipePage({ params }: PageProps<"/recettes/[id]">
         </div>
       </div>
 
+      <RecipePhoto name={recipe.name} url={recipe.image_url} className="-mx-5 h-44 rounded-b-[20px]" sizes="(max-width: 480px) 100vw, 448px" glyph={48} priority />
+
       <header className="flex flex-col gap-2">
         <span className="text-[13px] font-medium text-muted">{CATEGORIES.find((c) => c.value === recipe.category)?.label}</span>
         <h1 className="font-display text-[28px] leading-tight font-bold tracking-[-0.5px]">{recipe.name}</h1>
@@ -63,7 +70,20 @@ export default async function RecipePage({ params }: PageProps<"/recettes/[id]">
             <Avatar person={author} size={20} /> Ajoutée par {author.name}
           </span>
         )}
+        <div className="flex flex-col gap-1.5 border-t border-line-soft pt-2.5">
+          <RecipePhotoButton recipeId={id} hasPhoto={!!recipe.image_url} />
+          {recipe.image_author && (
+            <span className="text-[11px] text-muted">
+              Photo {recipe.image_author} sur{" "}
+              <a href={recipe.image_source ?? "https://unsplash.com"} target="_blank" rel="noopener noreferrer" className="underline">
+                {PHOTO_SOURCE_NAME}
+              </a>
+            </span>
+          )}
+        </div>
       </header>
+
+      <NutritionCard nutrition={recipeNutrition(recipe)} portionLabel={recipe.yield_label ? "par part" : "par portion"} />
 
       {recipe.equipment.length > 0 && (
         <section className="card flex flex-col gap-2 p-4">
@@ -86,7 +106,10 @@ export default async function RecipePage({ params }: PageProps<"/recettes/[id]">
             {g.label && <h3 className="mt-2 mb-1 text-sm font-semibold">{g.label}</h3>}
             {g.items.map((i) => (
               <div key={i.id} className="flex min-h-10 items-center gap-2.5 border-b border-line-soft last:border-0">
-                <span className="w-24 shrink-0 text-sm font-semibold text-ink-2">{formatQuantity(i.quantity, i.unit)}</span>
+                <span aria-hidden className="shrink-0 text-muted">
+                  <AisleIcon aisle={i.aisle} size={17} />
+                </span>
+                <span className="w-20 shrink-0 text-sm font-semibold text-ink-2">{formatQuantity(i.quantity, i.unit)}</span>
                 <span className="flex-1 text-[15px]">{i.name}</span>
               </div>
             ))}

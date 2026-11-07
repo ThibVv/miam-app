@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { addChosenRecipe, removeMeal, setMealRecipe } from "@/app/actions";
+import { addChosenRecipe, removeDish, removeMeal, setMealRecipe } from "@/app/actions";
 import { RecipeSheet } from "@/components/RecipeSheet";
 import { DAYS, type Slot } from "@/lib/types";
 import { ListIcon, PlusIcon, TrashIcon } from "@/components/icons";
@@ -131,6 +131,23 @@ export function ChooseExtraButton({ planId }: { planId: string }) {
         />
       )}
     </>
+  );
+}
+
+/** Retirer un plat de la semaine : tous ses repas, ses créneaux redeviennent libres. */
+export function RemoveDishButton({ planId, recipeId, recipeName }: { planId: string; recipeId: string; recipeName: string }) {
+  const [pending, start] = useTransition();
+  return (
+    <button
+      type="button"
+      onClick={() => start(() => removeDish(planId, recipeId))}
+      disabled={pending}
+      aria-label={`Retirer ${recipeName} de la semaine`}
+      title="Retirer ce plat de la semaine"
+      className="flex size-9 shrink-0 items-center justify-center rounded-lg text-muted transition-colors hover:bg-chip active:scale-95"
+    >
+      <TrashIcon size={15} />
+    </button>
   );
 }
 

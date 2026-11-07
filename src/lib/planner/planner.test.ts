@@ -39,13 +39,58 @@ const input = (over: Partial<GenerateInput> = {}): GenerateInput => ({
 });
 
 describe("generatePlan", () => {
-  it("remplit les 10 créneaux avec 10 plats distincts, 5 par personne", () => {
+  it("en partageant : 5 plats pour deux, 10 repas chacun, chaque plat mangé ensemble", () => {
     const { meals } = generatePlan(input());
     const mains = meals.filter((m) => m.slot !== "extra");
     expect(mains).toHaveLength(10);
-    expect(new Set(mains.map((m) => m.recipe_id)).size).toBe(10);
-    expect(mains.filter((m) => m.person_id === "a")).toHaveLength(5);
+    expect(new Set(mains.map((m) => m.recipe_id)).size).toBe(5);
+    expect(mains.every((m) => m.eaters?.length === 2)).toBe(true);
     expect(mains.every((m) => byId.get(m.recipe_id)!.category === "plat")).toBe(true);
+  });
+
+  it("sans partage : 5 plats chacun, 10 plats différents", () => {
+    const { meals } = generatePlan(input({ criteria: { ...criteria, share: false } }));
+    const mains = meals.filter((m) => m.slot !== "extra");
+    expect(new Set(mains.map((m) => m.recipe_id)).size).toBe(10);
+    for (const person of ["a", "b"]) {
+      const mine = mains.filter((m) => m.eaters?.includes(person));
+      expect(mine).toHaveLength(10);
+      expect(new Set(mine.map((m) => m.recipe_id)).size).toBe(5);
+    }
+  });
+
+  it("chaque personne a un seul plat par créneau, et pas deux fois le même dans la journée", () => {
+    for (let seed = 1; seed <= 20; seed++) {
+      const { meals } = generatePlan(input({ criteria: { ...criteria, people: [{ ...criteria.people[0], count: 4 }, { ...criteria.people[1], count: 6 }] }, rng: seeded(seed) }));
+      for (const person of ["a", "b"]) {
+        const mine = meals.filter((m) => m.slot !== "extra" && m.eaters?.includes(person));
+        expect(new Set(mine.map((m) => `${m.day}|${m.slot}`)).size).toBe(10);
+        const twiceADay = mine.filter((m) => mine.some((o) => o !== m && o.day === m.day && o.recipe_id === m.recipe_id));
+        expect(twiceADay).toHaveLength(0);
+      }
+    }
+  });
+
+  it("aucun plat non congelable n'est mangé après sa date limite, même en le servant plusieurs fois", () => {
+    for (let seed = 1; seed <= 30; seed++) {
+      const counts = [[5, 5], [4, 6], [3, 6], [5, 7]][seed % 4];
+      const people = criteria.people.map((p, i) => ({ ...p, count: counts[i] }));
+      const { meals } = generatePlan(input({ criteria: { ...criteria, people, minTags: {} }, rng: seeded(seed) }));
+      for (const m of meals.filter((x) => x.slot !== "extra")) {
+        const r = byId.get(m.recipe_id)!;
+        expect(r.freezable || m.day + 1 <= r.fridge_days).toBe(true);
+      }
+    }
+  });
+
+  it("ne partage pas un plat que l'un des deux n'aime pas", () => {
+    for (let seed = 1; seed <= 5; seed++) {
+      const { meals } = generatePlan(input({ dislikesByPerson: { a: [], b: ["champignons", "poulet"] }, rng: seeded(seed) }));
+      for (const m of meals.filter((x) => x.eaters?.includes("b"))) {
+        const names = byId.get(m.recipe_id)!.recipe_ingredients.map((i) => i.name.toLowerCase());
+        expect(names.some((n) => n.includes("champignon") || n.includes("poulet"))).toBe(false);
+      }
+    }
   });
 
   it("respecte les exclusions, les « n'aime pas » et le minimum végé", () => {
@@ -112,16 +157,16 @@ describe("generatePlan", () => {
   it("évite deux plats du même type dans la semaine", () => {
     for (let seed = 1; seed <= 10; seed++) {
       const { meals } = generatePlan(input({ rng: seeded(seed) }));
-      const kinds = meals.map((m) => byId.get(m.recipe_id)!.name.split(" ")[0].toLowerCase());
+      const kinds = [...new Set(meals.map((m) => m.recipe_id))].map((id) => byId.get(id)!.name.split(" ")[0].toLowerCase());
       expect(kinds.filter((k) => k === "chili").length).toBeLessThanOrEqual(1);
     }
   });
 
   it("ne remplace un plat de fin de semaine que par un plat qui tient jusque-là", () => {
     const { meals } = generatePlan(input());
-    const ids = meals.map((m) => m.recipe_id);
+    const ids = [...new Set(meals.map((m) => m.recipe_id))];
     for (let i = 0; i < 10; i++) {
-      const r = pickReplacement(input({ rng: seeded(i + 1) }), ids, ids[0], "a", 4)!;
+      const r = pickReplacement(input({ rng: seeded(i + 1) }), ids, ids[0], ["a"], 4)!;
       expect(ids).not.toContain(r.id);
       expect(r.freezable || r.fridge_days >= 5).toBe(true);
     }
@@ -138,6 +183,16 @@ describe("buildShoppingList", () => {
     const oignon = list.find((l) => l.name.toLowerCase().startsWith("oignon"))!;
     expect(oignon.quantity).toBe(2);
     expect(oignon.sources).toHaveLength(2);
+  });
+
+  it("un plat partagé compte une part par mangeur, un plat individuel une seule", () => {
+    const dahl = byName("Dahl de lentilles corail"); // pour 2
+    const pour = (eaters: string[]) => ({ ...meal(dahl), eaters });
+    const lentils = (meals: PlanMeal[]) => buildShoppingList(meals, byId, 2).find((l) => l.name === "Lentilles corail")!.quantity!;
+    const recette = lentils([pour(["a", "b"])]);
+    expect(lentils([pour(["a"])])).toBeLessThan(recette);
+    // Deux repas à deux = deux fois la recette
+    expect(lentils([pour(["a", "b"]), { ...pour(["a", "b"]), day: 1 }])).toBe(recette * 2);
   });
 
   it("marque ce qui est déjà au placard", () => {

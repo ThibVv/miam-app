@@ -1,23 +1,25 @@
 import Link from "next/link";
 import { getContext, getLatestPlan, getPlanRecipes } from "@/lib/data";
-import { DAYS, EXTRA_CATEGORIES, MEAL_SLOTS } from "@/lib/types";
+import { DAYS, EXTRA_CATEGORIES, MEAL_SLOTS, type PlanMeal } from "@/lib/types";
 import { stationCapacities } from "@/lib/equipment";
 import { formatMinutes, scheduleBatch } from "@/lib/planner/schedule";
+import { cookedDishes, formatScale, partsOf } from "@/lib/planner/shopping";
 import { weekBalance } from "@/lib/nutrition/analyze";
 import { dayNumber, formatWeekRange } from "@/lib/week";
-import { AppShell, EmptyState, PageHeader, PeopleBadge } from "@/components/ui";
+import { AppShell, Avatar, EmptyState, PageHeader, PeopleBadge } from "@/components/ui";
 import { WeekBalanceCard } from "@/components/NutritionCard";
 import { RecipePhoto } from "@/components/RecipePhoto";
-import { ChevronRight } from "@/components/icons";
+import { ChevronRight, PlusIcon } from "@/components/icons";
 import { SwapButton } from "./SwapButton";
 import { AddExtraButton, RemoveExtraButton } from "./ExtraButtons";
-import { AddMealButton, ChooseExtraButton, ChooseMealButton } from "./MealActions";
+import { AddMealButton, ChooseExtraButton, ChooseMealButton, RemoveDishButton, RemoveMealButton } from "./MealActions";
 
 const EXTRA_LABEL: Record<string, string> = { plat: "Plat", "petit-dej": "Petit-déj", gouter: "Goûter" };
 
 export default async function WeekPage() {
   const [{ people, household }, plan] = await Promise.all([getContext(), getLatestPlan()]);
   const personById = new Map(people.map((p) => [p.id, p]));
+  const everyone = people.map((p) => p.id);
 
   if (!plan) {
     return (
@@ -25,9 +27,9 @@ export default async function WeekPage() {
         <PageHeader title="Ma semaine" action={<PeopleBadge people={people} />} />
         <EmptyState
           title="Aucune semaine planifiée"
-          text="Notez vos fonds de placard, choisissez vos envies : Miam sélectionne les plats, crée la liste de courses et le guide de préparation."
+          text="Laissez Miam choisir des plats à partager, ou composez la semaine selon vos envies : la liste de courses et le guide de préparation suivent."
           href="/generer"
-          cta="Générer ma semaine"
+          cta="Préparer ma semaine"
         />
         <Link href="/placard" className="btn-secondary">Fonds de placard</Link>
       </AppShell>
@@ -39,22 +41,38 @@ export default async function WeekPage() {
   const byId = new Map(planRecipes.map((r) => [r.id, r]));
   const meals = plan.plan_meals.filter((m) => m.slot !== "extra");
   const extras = plan.plan_meals.filter((m) => m.slot === "extra");
-  const schedule = scheduleBatch(planRecipes, people.map((p) => p.id), stationCapacities(household.equipment, household.burners));
+  const eatersOf = (m: PlanMeal) => (m.eaters?.length ? m.eaters.filter((id) => personById.has(id)) : everyone);
+  const dishes = cookedDishes(meals, byId, everyone).sort((a, b) => b.parts - a.parts);
+  const parts = meals.reduce((n, m) => n + partsOf(m, people.length), 0);
+  const schedule = scheduleBatch(planRecipes, everyone, stationCapacities(household.equipment, household.burners));
   const days = DAYS.map((label, day) => ({
     label,
     day,
     num: dayNumber(plan.week_start, day),
-    meals: MEAL_SLOTS.map((slot) => meals.find((m) => m.day === day && m.slot === slot)),
+    slots: MEAL_SLOTS.map((slot) => {
+      const rows = meals.filter((m) => m.day === day && m.slot === slot);
+      const covered = new Set(rows.flatMap(eatersOf));
+      return { slot, rows, free: people.filter((p) => !covered.has(p.id)) };
+    }),
   }));
 
   return (
     <AppShell>
-      <PageHeader kicker={`Semaine du ${formatWeekRange(plan.week_start)}`} title="Ma semaine" action={<PeopleBadge people={people} />} />
+      <PageHeader
+        kicker={`Semaine du ${formatWeekRange(plan.week_start)}`}
+        title="Ma semaine"
+        action={
+          <Link href="/generer?mode=envie" className="btn-primary min-h-10 gap-1 px-3 text-[13px]">
+            <PlusIcon size={16} />
+            Un plat
+          </Link>
+        }
+      />
 
       <div className="grid grid-cols-3 gap-1.5">
         {[
-          [meals.length, "plats"],
-          [meals.length * Math.max(people.length, 1), "tups"],
+          [dishes.length, dishes.length > 1 ? "plats" : "plat"],
+          [parts, "repas"],
           [formatMinutes(schedule.totalMinutes), "de prep"],
         ].map(([value, label]) => (
           <div key={label} className="card flex flex-col items-center gap-0.5 rounded-xl px-2 py-2.5">
@@ -72,24 +90,43 @@ export default async function WeekPage() {
         <ChevronRight size={20} />
       </Link>
 
-      <section className="flex flex-col gap-2">
-        <h2 className="section-title">Au menu</h2>
-        <div className="-mx-5 flex gap-2.5 overflow-x-auto px-5 pb-1">
-          {planRecipes.map((r, i) => (
-            <Link
-              key={r.id}
-              href={`/recettes/${r.id}`}
-              style={{ "--i": Math.min(i, 10) } as React.CSSProperties}
-              className="card rise w-[118px] shrink-0 overflow-hidden transition-transform active:scale-[0.98] hover:ring-2 hover:ring-brand-soft"
-            >
-              <RecipePhoto name={r.name} url={r.image_url} index={i} className="h-[78px] w-full" glyph={22} sizes="120px" />
-              <span className="block p-2 text-xs leading-tight font-medium">
-                <span className="line-clamp-2">{r.name}</span>
-              </span>
-            </Link>
-          ))}
-        </div>
-      </section>
+      {dishes.length > 0 && (
+        <section className="flex flex-col gap-2">
+          <h2 className="section-title">À cuisiner · {dishes.length} plat{dishes.length > 1 ? "s" : ""}</h2>
+          {dishes.map((d, i) => {
+            const shared = d.eaters.length === people.length && people.length > 1;
+            const firstMeal = meals.find((m) => m.recipe_id === d.recipe.id);
+            return (
+              <div key={d.recipe.id} style={{ "--i": Math.min(i, 10) } as React.CSSProperties} className="card rise flex items-center gap-3 rounded-[14px] p-2 pr-1">
+                <RecipePhoto name={d.recipe.name} url={d.recipe.image_url} index={i} className="size-12 shrink-0 rounded-[10px]" glyph={18} sizes="48px" />
+                <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <Link href={`/recettes/${d.recipe.id}`} className="truncate text-sm font-semibold hover:underline">
+                    {d.recipe.name}
+                  </Link>
+                  <span className="flex items-center gap-1.5 text-xs text-muted">
+                    <span className="flex shrink-0">
+                      {d.eaters.map((id, j) => (
+                        <span key={id} className={j ? "-ml-1.5" : ""}>
+                          <Avatar person={personById.get(id)} size={18} />
+                        </span>
+                      ))}
+                    </span>
+                    <span className="min-w-0 truncate">
+                      {shared ? (people.length === 2 ? "Vous deux" : "Tout le monde") : d.eaters.map((id) => personById.get(id)?.name).join(", ")} · {d.parts} part
+                      {d.parts > 1 ? "s" : ""}
+                    </span>
+                    <strong className="shrink-0 rounded-full bg-chip px-1.5 py-px font-semibold text-ink" title="Multiplicateur de la recette">
+                      {formatScale(d.scale)}
+                    </strong>
+                  </span>
+                </div>
+                {firstMeal?.id && <SwapButton planId={plan.id} mealId={firstMeal.id} recipeName={d.recipe.name} />}
+                <RemoveDishButton planId={plan.id} recipeId={d.recipe.id} recipeName={d.recipe.name} />
+              </div>
+            );
+          })}
+        </section>
+      )}
 
       <div className="flex flex-col gap-2">
         {days.map((d) => (
@@ -98,39 +135,49 @@ export default async function WeekPage() {
               <span className="text-xs font-medium text-muted">{d.label.slice(0, 3)}</span>
               <span className="font-display text-xl font-bold">{d.num}</span>
             </div>
-            <div className="flex min-w-0 flex-1 flex-col gap-1">
-              {d.meals.map((meal, i) => {
-                const recipe = meal && byId.get(meal.recipe_id);
-                const chooser = meal?.person_id ? personById.get(meal.person_id) : undefined;
-                return (
-                  <div key={i} className="flex min-h-9 items-center gap-2">
-                    <span className="w-[30px] shrink-0 text-[11px] text-muted capitalize">{MEAL_SLOTS[i]}</span>
-                    <span className="size-2 shrink-0 rounded-full" style={{ background: chooser?.color ?? "#a9b1ab" }} title={chooser ? `Choisi pour ${chooser.name}` : undefined} />
-                    {recipe ? (
-                      <Link href={`/recettes/${recipe.id}`} className="min-w-0 flex-1 truncate text-sm font-medium hover:underline">
-                        {recipe.name}
-                      </Link>
-                    ) : (
-                      <span className="flex flex-1 items-center">
-                        <AddMealButton planId={plan.id} day={d.day} slot={MEAL_SLOTS[i]} />
+            <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+              {d.slots.map(({ slot, rows, free }) => (
+                <div key={slot} className="flex items-start gap-2">
+                  <span className="w-[30px] shrink-0 pt-2 text-[11px] text-muted capitalize">{slot}</span>
+                  <div className="flex min-w-0 flex-1 flex-col gap-1">
+                    {rows.map((meal) => {
+                      const recipe = byId.get(meal.recipe_id);
+                      const who = eatersOf(meal);
+                      const all = who.length === people.length;
+                      return (
+                        <div key={meal.id} className={`flex min-h-9 items-center gap-1.5 rounded-lg pl-2 ${all && people.length > 1 ? "bg-brand-soft" : "bg-chip"}`}>
+                          {!all && (
+                            <span className="flex shrink-0">
+                              {who.map((id) => (
+                                <span key={id} className="size-2.5 rounded-full" style={{ background: personById.get(id)?.color }} title={personById.get(id)?.name} />
+                              ))}
+                            </span>
+                          )}
+                          <Link href={`/recettes/${meal.recipe_id}`} className="min-w-0 flex-1 truncate text-[13px] font-medium hover:underline">
+                            {recipe?.name ?? "Recette supprimée"}
+                            {!all && <span className="font-normal text-muted"> · {who.map((id) => personById.get(id)?.name).join(", ")}</span>}
+                          </Link>
+                          {meal.storage === "congelo" && <span className="shrink-0 rounded-full bg-freeze-soft px-[7px] py-0.5 text-[11px] text-freeze">congélo</span>}
+                          {meal.id && <ChooseMealButton planId={plan.id} mealId={meal.id} day={d.day} slot={slot} />}
+                          {meal.id && <RemoveMealButton planId={plan.id} mealId={meal.id} recipeName={recipe?.name ?? ""} />}
+                        </div>
+                      );
+                    })}
+                    {free.length > 0 && (
+                      <span className="flex items-center gap-2">
+                        <AddMealButton planId={plan.id} day={d.day} slot={slot} />
+                        {rows.length > 0 && <span className="text-xs text-muted">pour {free.map((p) => p.name).join(", ")}</span>}
                       </span>
                     )}
-                    {meal && (
-                      <span className={`shrink-0 rounded-full px-[7px] py-0.5 text-[11px] ${meal.storage === "congelo" ? "bg-freeze-soft text-freeze" : "bg-chip text-[#4a5a50]"}`}>
-                        {meal.storage === "congelo" ? "congélo" : "frigo"}
-                      </span>
-                    )}
-                    {meal?.id && <ChooseMealButton planId={plan.id} mealId={meal.id} day={d.day} slot={MEAL_SLOTS[i]} />}
-                    {meal?.id && <SwapButton planId={plan.id} mealId={meal.id} recipeName={recipe?.name ?? ""} />}
                   </div>
-                );
-              })}
+                </div>
+              ))}
             </div>
           </div>
         ))}
       </div>
 
-      <WeekBalanceCard balance={weekBalance(planRecipes)} mealCount={meals.length} />
+      <WeekBalanceCard balance={weekBalance(planRecipes)} mealCount={dishes.length} />
 
       <section className="flex flex-col gap-2">
         <h2 className="section-title">En plus · plats, petit-déj & goûters</h2>

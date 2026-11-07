@@ -2,7 +2,7 @@ import { cache } from "react";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { weeksBetween } from "@/lib/week";
-import type { Category, Household, MealPlan, PantryItem, Person, Recipe, RecipeSummary, ShoppingItem } from "@/lib/types";
+import type { Category, Household, MealPlan, PantryItem, Person, Recipe, RecipeSummary, ShoppingItem, Slot } from "@/lib/types";
 
 const RECIPE_SELECT = "*, recipe_ingredients(*), recipe_steps(*)";
 
@@ -103,6 +103,31 @@ export async function getLatestPlan(): Promise<MealPlan | null> {
     .maybeSingle();
   return (data as MealPlan) ?? null;
 }
+
+export interface WeekSlots {
+  planId: string;
+  weekStart: string;
+  meals: { id: string; day: number; slot: Slot; recipeName: string }[];
+}
+
+/** La semaine en cours, en version légère : ce qu'il faut pour proposer « Ajouter à la semaine ». */
+export const getWeekSlots = cache(async (): Promise<WeekSlots | null> => {
+  const { supabase, household } = await getContext();
+  const { data } = await supabase
+    .from("meal_plans")
+    .select("id, week_start, plan_meals(id, day, slot, recipes(name))")
+    .eq("household_id", household.id)
+    .order("week_start", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (!data) return null;
+  const meals = data.plan_meals as unknown as { id: string; day: number; slot: Slot; recipes: { name: string } | null }[];
+  return {
+    planId: data.id,
+    weekStart: data.week_start,
+    meals: meals.map((m) => ({ id: m.id, day: m.day, slot: m.slot, recipeName: m.recipes?.name ?? "" })),
+  };
+});
 
 export async function getShoppingItems(planId: string): Promise<ShoppingItem[]> {
   const { supabase } = await getContext();

@@ -13,7 +13,7 @@ import { SwapButton } from "./SwapButton";
 import { AddExtraButton, RemoveExtraButton } from "./ExtraButtons";
 import { AddMealButton, ChooseExtraButton, ChooseMealButton } from "./MealActions";
 
-const EXTRA_LABEL: Record<string, string> = { "petit-dej": "Petit-déj", gouter: "Goûter" };
+const EXTRA_LABEL: Record<string, string> = { plat: "Plat", "petit-dej": "Petit-déj", gouter: "Goûter" };
 
 export default async function WeekPage() {
   const [{ people, household }, plan] = await Promise.all([getContext(), getLatestPlan()]);
@@ -133,7 +133,7 @@ export default async function WeekPage() {
       <WeekBalanceCard balance={weekBalance(planRecipes)} mealCount={meals.length} />
 
       <section className="flex flex-col gap-2">
-        <h2 className="section-title">En plus · petit-déj & goûter</h2>
+        <h2 className="section-title">En plus · plats, petit-déj & goûters</h2>
         {extras.map((m) => {
           const recipe = byId.get(m.recipe_id);
           return (

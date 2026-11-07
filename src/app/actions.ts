@@ -5,9 +5,12 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
-import { getContext, getPantry, getPlanRecipes, getRecipes, getWeeksSinceEaten } from "@/lib/data";
+import { getContext, getPantry, getPlanRecipes, getRecipeSummaries, getRecipes, getWeeksSinceEaten } from "@/lib/data";
 import { STARTER_RECIPES } from "@/lib/starter-recipes";
-import { daysAfterCooking, generatePlan, pickExtras, pickReplacement, type GenerateInput } from "@/lib/planner/generate";
+import { completeWeek, daysAfterCooking, freeSlotsOf, generatePlan, pickExtras, pickReplacement, placeChosen, type GenerateInput } from "@/lib/planner/generate";
+import { criteriaFor } from "@/lib/planner/criteria";
+import { searchByMood } from "@/lib/planner/mood";
+import { mentionsIngredient } from "@/lib/units";
 import { buildShoppingList, shoppingKey } from "@/lib/planner/shopping";
 import { parseRecipeFromHtml } from "@/lib/import/parse-recipe";
 import { fetchPublicPage } from "@/lib/import/fetch-page";
@@ -356,11 +359,12 @@ async function generationInput(criteria: Criteria, weekStart: string): Promise<G
   const [recipes, weeksSinceEaten, pantry] = await Promise.all([getRecipes(), getWeeksSinceEaten(weekStart), getPantry()]);
   return {
     recipes,
-    criteria,
+    criteria: criteriaFor(people, criteria),
     weeksSinceEaten,
     equipment: household.equipment,
     pantry: criteria.usePantry ? pantry.map((p) => p.name) : [],
     dislikes: people.flatMap((p) => p.dislikes),
+    dislikesByPerson: Object.fromEntries(people.map((p) => [p.id, p.dislikes])),
   };
 }
 
@@ -393,10 +397,36 @@ async function rebuildShopping(supabase: SupabaseClient, planId: string, meals: 
   }
 }
 
+type LoadedPlan = { id: string; week_start: string; criteria: Criteria; plan_meals: (PlanMeal & { id: string })[] };
+
 async function loadPlan(planId: string) {
   const { supabase } = await getContext();
   const { data: plan } = await supabase.from("meal_plans").select("*, plan_meals(*)").eq("id", planId).single();
-  return plan as { id: string; week_start: string; criteria: Criteria; plan_meals: (PlanMeal & { id: string })[] } | null;
+  return plan as LoadedPlan | null;
+}
+
+/** La semaine qui commence à `weekStart`, créée vide si besoin (pour la remplir à la main). */
+async function ensurePlan(weekStart: string): Promise<LoadedPlan | null> {
+  const { supabase, household, people, userId } = await getContext();
+  const { data } = await supabase.from("meal_plans").select("*, plan_meals(*)").eq("household_id", household.id).eq("week_start", weekStart).maybeSingle();
+  if (data) return data as LoadedPlan;
+  const { data: last } = await supabase.from("meal_plans").select("criteria").eq("household_id", household.id).order("week_start", { ascending: false }).limit(1).maybeSingle();
+  const criteria = criteriaFor(people, last?.criteria as Partial<Criteria> | undefined);
+  const { data: created } = await supabase
+    .from("meal_plans")
+    .insert({ household_id: household.id, week_start: weekStart, criteria, created_by: userId })
+    .select("*, plan_meals(*)")
+    .single();
+  return (created as LoadedPlan) ?? null;
+}
+
+async function planRecipesOf(meals: { recipe_id: string }[]): Promise<Recipe[]> {
+  return getPlanRecipes([...new Set(meals.map((m) => m.recipe_id))]);
+}
+
+/** Les repas d'une ligne : ses mangeurs, ou tout le foyer pour une semaine d'avant le partage. */
+function eatersOf(meal: PlanMeal, people: { id: string }[]) {
+  return meal.eaters?.length ? meal.eaters : people.map((p) => p.id);
 }
 
 export async function generateWeek(criteria: Criteria, weekStart: string): Promise<{ warnings: string[]; error?: string }> {
@@ -420,32 +450,45 @@ export async function generateWeek(criteria: Criteria, weekStart: string): Promi
   return { warnings };
 }
 
+/**
+ * Échange un plat : la nouvelle recette remplace l'ancienne sur tous ses repas (on la
+ * cuisine une fois). Elle doit plaire à tous ceux qui la mangent et tenir jusqu'au dernier.
+ */
 export async function swapMeal(planId: string, mealId: string) {
-  const { supabase } = await getContext();
+  const { supabase, people } = await getContext();
   const plan = await loadPlan(planId);
-  if (!plan) return;
-  const meal = plan.plan_meals.find((m) => m.id === mealId);
-  if (!meal) return;
+  const meal = plan?.plan_meals.find((m) => m.id === mealId);
+  if (!plan || !meal) return;
 
+  const rows = meal.slot === "extra" ? [meal] : plan.plan_meals.filter((m) => m.slot !== "extra" && m.recipe_id === meal.recipe_id);
+  const eaters = [...new Set(rows.flatMap((m) => eatersOf(m, people)))];
+  const lastDay = Math.max(...rows.map((m) => m.day));
   const input = await generationInput(plan.criteria, plan.week_start);
   const current = input.recipes.find((r) => r.id === meal.recipe_id);
   const replacement = pickReplacement(
     input,
     plan.plan_meals.map((m) => m.recipe_id),
     meal.recipe_id,
-    meal.person_id,
-    meal.day,
+    meal.slot === "extra" ? [] : eaters,
+    lastDay,
     current?.category ?? "plat",
   );
   if (!replacement) return;
 
-  const storage =
-    meal.slot === "extra"
-      ? replacement.freezable ? "congelo" : "frigo"
-      : daysAfterCooking(meal.day) > replacement.fridge_days && replacement.freezable ? "congelo" : "frigo";
-  await supabase.from("plan_meals").update({ recipe_id: replacement.id, storage }).eq("id", mealId);
-  const updated = plan.plan_meals.map((m) => (m.id === mealId ? { ...m, recipe_id: replacement.id, storage } : m));
+  const updates = rows.map((m) => ({ id: m.id, storage: m.slot === "extra" ? (replacement.freezable ? "congelo" : "frigo") : storageFor(replacement, m.day) }));
+  await Promise.all(updates.map((u) => supabase.from("plan_meals").update({ recipe_id: replacement.id, storage: u.storage }).eq("id", u.id)));
+  const changed = new Map(updates.map((u) => [u.id, u.storage]));
+  const updated = plan.plan_meals.map((m) => (changed.has(m.id) ? { ...m, recipe_id: replacement.id, storage: changed.get(m.id)! } : m));
   await rebuildShopping(supabase, planId, updated as PlanMeal[], input.recipes);
+  revalidatePath("/", "layout");
+}
+
+/** Retire un plat de la semaine : tous ses repas, ses créneaux redeviennent libres. */
+export async function removeDish(planId: string, recipeId: string) {
+  const { supabase } = await getContext();
+  await supabase.from("plan_meals").delete().eq("plan_id", planId).eq("recipe_id", recipeId).neq("slot", "extra");
+  const plan = await loadPlan(planId);
+  if (plan) await rebuildShopping(supabase, planId, plan.plan_meals, await planRecipesOf(plan.plan_meals));
   revalidatePath("/", "layout");
 }
 
@@ -483,13 +526,9 @@ export async function recipeChoices(): Promise<RecipeChoice[]> {
   return (data ?? []) as RecipeChoice[];
 }
 
-function storageFor(recipe: { fridge_days: number; freezable: boolean }, day: number, slot: PlanMeal["slot"]) {
+function storageFor(recipe: { fridge_days: number; freezable: boolean }, day: number, slot: PlanMeal["slot"] = "midi") {
   if (slot === "extra") return recipe.freezable ? "congelo" : "frigo";
   return daysAfterCooking(day) > recipe.fridge_days && recipe.freezable ? "congelo" : "frigo";
-}
-
-async function planRecipesOf(meals: { recipe_id: string }[]): Promise<Recipe[]> {
-  return getPlanRecipes([...new Set(meals.map((m) => m.recipe_id))]);
 }
 
 /** Remplace la recette d'un créneau par celle choisie à la main. */
@@ -510,23 +549,28 @@ export async function setMealRecipe(planId: string, mealId: string, recipeId: st
   return {};
 }
 
-/** Ajoute une recette choisie à la main : sur un créneau libre, ou en extra. */
+/** Ajoute une recette choisie à la main sur un créneau (pour ceux qui y sont libres), ou en extra. */
 export async function addChosenRecipe(planId: string, recipeId: string, target: { day: number; slot: PlanMeal["slot"] }): Promise<{ error?: string }> {
-  const { supabase } = await getContext();
+  const { supabase, people } = await getContext();
   const plan = await loadPlan(planId);
   if (!plan) return { error: "Semaine introuvable." };
   const [recipe] = await getPlanRecipes([recipeId]);
   if (!recipe) return { error: "Recette introuvable." };
-  if (target.slot !== "extra" && plan.plan_meals.some((m) => m.day === target.day && m.slot === target.slot)) {
-    return { error: "Ce créneau est déjà pris." };
+
+  let eaters: string[] = [];
+  if (target.slot !== "extra") {
+    const taken = new Set(plan.plan_meals.filter((m) => m.day === target.day && m.slot === target.slot).flatMap((m) => eatersOf(m, people)));
+    eaters = people.map((p) => p.id).filter((id) => !taken.has(id));
+    if (!eaters.length) return { error: "Ce créneau est déjà pris." };
   }
 
-  const meal = {
+  const meal: PlanMeal = {
     recipe_id: recipeId,
     person_id: null,
     day: target.slot === "extra" ? 0 : target.day,
     slot: target.slot,
     storage: storageFor(recipe, target.day, target.slot),
+    eaters,
   };
   const { error } = await supabase.from("plan_meals").insert({ ...meal, plan_id: planId });
   if (error) return { error: error.message };
@@ -543,6 +587,110 @@ export async function removeMeal(planId: string, mealId: string) {
   const plan = await loadPlan(planId);
   if (plan) await rebuildShopping(supabase, planId, plan.plan_meals, await planRecipesOf(plan.plan_meals));
   revalidatePath("/", "layout");
+}
+
+// Composer sa semaine selon une envie -----------------------------------------
+
+export interface MoodResult {
+  id: string;
+  name: string;
+  category: Category;
+  tags: string[];
+  servings: number;
+  fridge_days: number;
+  freezable: boolean;
+  image_url: string | null;
+  reasons: string[];
+  /** Qui n'aime pas un de ses ingrédients, et lequel */
+  conflicts: { personId: string; word: string }[];
+}
+
+/** Recettes de la bibliothèque qui répondent à une envie écrite à la main. */
+export async function searchMood(query: string): Promise<{ understood: string[]; results: MoodResult[] }> {
+  const { people } = await getContext();
+  const recipes = await getRecipeSummaries();
+  const { understood, matches } = searchByMood(query, recipes);
+  const byId = new Map(recipes.map((r) => [r.id, r]));
+  const results = matches.slice(0, 30).map((m) => {
+    const r = byId.get(m.id)!;
+    const conflicts = people.flatMap((p) =>
+      p.dislikes.filter((d) => r.recipe_ingredients.some((i) => mentionsIngredient(i.name, d))).map((word) => ({ personId: p.id, word })),
+    );
+    return {
+      id: r.id,
+      name: r.name,
+      category: r.category,
+      tags: r.tags,
+      servings: r.servings,
+      fridge_days: r.fridge_days,
+      freezable: r.freezable,
+      image_url: r.image_url,
+      reasons: m.reasons,
+      conflicts,
+    };
+  });
+  return { understood, results };
+}
+
+/**
+ * Ajoute une recette à la semaine pour certaines personnes, `mealsEach` repas chacune.
+ * Sans créneaux donnés, Miam les place lui-même selon la conservation du plat.
+ */
+export async function addDishToWeek(
+  weekStart: string,
+  recipeId: string,
+  eaters: string[],
+  mealsEach: number,
+  slots?: { day: number; slot: "midi" | "soir" }[],
+): Promise<{ error?: string; placed?: { day: number; slot: string }[] }> {
+  const { supabase, people } = await getContext();
+  if (!eaters.length) return { error: "Choisissez pour qui." };
+  const plan = await ensurePlan(weekStart);
+  if (!plan) return { error: "Impossible de créer la semaine." };
+  const [recipe] = await getPlanRecipes([recipeId]);
+  if (!recipe) return { error: "Recette introuvable." };
+
+  const ids = people.map((p) => p.id);
+  let rows: PlanMeal[];
+  if (recipe.category !== "plat") {
+    rows = [{ recipe_id: recipe.id, person_id: null, day: 0, slot: "extra", storage: storageFor(recipe, 0, "extra"), eaters }];
+  } else if (slots?.length) {
+    const free = freeSlotsOf(plan.plan_meals, ids);
+    rows = slots.flatMap((s) => {
+      const who = eaters.filter((id) => free.get(id)?.some((f) => f.day === s.day && f.slot === s.slot));
+      return who.length ? [{ recipe_id: recipe.id, person_id: null, day: s.day, slot: s.slot, storage: storageFor(recipe, s.day), eaters: who }] : [];
+    });
+  } else {
+    rows = placeChosen(recipe, eaters, mealsEach, plan.plan_meals, ids);
+  }
+  if (!rows.length) return { error: "Plus de créneau libre pour ces personnes : retirez un plat d'abord." };
+
+  const { error } = await supabase.from("plan_meals").insert(rows.map((m) => ({ ...m, plan_id: plan.id })));
+  if (error) return { error: error.message };
+  const updated = [...plan.plan_meals, ...rows];
+  await rebuildShopping(supabase, plan.id, updated, await planRecipesOf(updated));
+  revalidatePath("/", "layout");
+  return { placed: rows.filter((m) => m.slot !== "extra").map((m) => ({ day: m.day, slot: m.slot })) };
+}
+
+/** Remplit automatiquement les repas encore libres d'une semaine composée à la main. */
+export async function completeWeekAuto(weekStart: string): Promise<{ warnings: string[]; error?: string }> {
+  const { supabase, people } = await getContext();
+  const plan = await ensurePlan(weekStart);
+  if (!plan) return { warnings: [], error: "Impossible de créer la semaine." };
+  const input = await generationInput(plan.criteria, plan.week_start);
+  const { meals, warnings } = completeWeek(
+    input,
+    plan.plan_meals,
+    people.map((p) => p.id),
+  );
+  if (meals.length) {
+    const { error } = await supabase.from("plan_meals").insert(meals.map((m) => ({ ...m, plan_id: plan.id })));
+    if (error) return { warnings, error: error.message };
+  }
+  await rebuildShopping(supabase, plan.id, [...plan.plan_meals, ...meals], input.recipes);
+  revalidatePath("/", "layout");
+  return { warnings };
 }
 
 // Courses ---------------------------------------------------------------------

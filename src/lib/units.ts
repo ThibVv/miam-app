@@ -53,6 +53,17 @@ function stripAccents(s: string) {
   return s.replace(/œ/g, "oe").replace(/æ/g, "ae").normalize("NFD").replace(/[̀-ͯ]/g, "");
 }
 
+/**
+ * L'ingrédient parle-t-il de ce mot (« champignon » dans « champignons de Paris ») ?
+ * Mot entier seulement, et l'huile d'olive n'est pas une olive pour qui n'aime pas les olives.
+ */
+export function mentionsIngredient(name: string, word: string): boolean {
+  const wk = ingredientKey(word);
+  if (!wk) return false;
+  const key = wk.startsWith("huile") ? ingredientKey(name) : ingredientKey(name).replace(/\bhuile d ?\w+/g, "huile");
+  return ` ${key} `.includes(` ${wk}`);
+}
+
 /** Clé de regroupement d'un ingrédient : minuscules, sans accents, au singulier. */
 export function ingredientKey(name: string): string {
   return stripAccents(name.toLowerCase())

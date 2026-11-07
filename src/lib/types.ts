@@ -140,6 +140,8 @@ export interface PlanMeal {
   day: number;
   slot: Slot;
   storage: Storage;
+  /** Personnes qui mangent ce plat à ce créneau ; vide = tout le foyer (semaines d'avant ce champ) */
+  eaters?: string[];
 }
 
 export interface MealPlan {
@@ -152,6 +154,7 @@ export interface MealPlan {
 
 export interface PersonCriteria {
   personId: string;
+  /** Nombre de plats différents pour cette personne sur ses 10 repas */
   count: number;
   /** Envies de la semaine (tags) */
   tags: string[];
@@ -168,6 +171,8 @@ export interface Criteria {
   shareIngredients: boolean;
   /** Utiliser en priorité les fonds de placard */
   usePantry: boolean;
+  /** Cuisiner une seule fois les plats qui conviennent à tout le monde (absent = oui) */
+  share?: boolean;
   /** Recettes en plus des repas : { "petit-dej": 1, "gouter": 1 } */
   extras: Partial<Record<Category, number>>;
 }

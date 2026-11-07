@@ -1,6 +1,7 @@
 import { getContext, getLatestPlan, getPlanRecipes } from "@/lib/data";
 import { stationCapacities } from "@/lib/equipment";
 import { formatMinutes, groupedPrep, scheduleBatch } from "@/lib/planner/schedule";
+import { cookedDishes } from "@/lib/planner/shopping";
 import { cookingDay } from "@/lib/week";
 import { AppShell, EmptyState, PageHeader } from "@/components/ui";
 import { PrepGuide } from "./PrepGuide";
@@ -23,9 +24,12 @@ export default async function PrepPage() {
   const capacities = stationCapacities(household.equipment, household.burners);
   const schedule = scheduleBatch(planRecipes, cooks, capacities);
   const solo = cooks.length > 1 ? scheduleBatch(planRecipes, [cooks[0]], capacities) : null;
-  const portions = Math.max(people.length, 1);
   const prep = groupedPrep(
-    planRecipes.map((recipe) => ({ recipe, scale: recipe.category === "plat" ? portions / recipe.servings : 1 })),
+    cookedDishes(
+      plan.plan_meals,
+      byId,
+      people.map((p) => p.id),
+    ).map((d) => ({ recipe: d.recipe, scale: d.scale })),
   );
   const freezerMeals = plan.plan_meals.filter((m) => m.storage === "congelo").map((m) => byId.get(m.recipe_id)?.name).filter(Boolean) as string[];
 

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getContext, getRecipe } from "@/lib/data";
+import { getContext, getRecipe, getWeekSlots } from "@/lib/data";
 import { deleteRecipe } from "@/app/actions";
 import { CATEGORIES, type Ingredient } from "@/lib/types";
 import { EQUIPMENT_BY_ID, hasEquipmentFor, stationLabel } from "@/lib/equipment";
@@ -15,6 +15,7 @@ import { RecipePhotoButton } from "@/components/PhotoButtons";
 import { AisleIcon, ChevronLeft, TrashIcon } from "@/components/icons";
 import { ConfirmSubmit } from "@/components/ConfirmSubmit";
 import { CopyRecipeButton } from "./CopyRecipeButton";
+import { AddToWeekButton } from "@/components/AddToWeekButton";
 
 function groups(ingredients: Ingredient[]) {
   const out: { label: string | null; items: Ingredient[] }[] = [];
@@ -28,7 +29,7 @@ function groups(ingredients: Ingredient[]) {
 
 export default async function RecipePage({ params }: PageProps<"/recettes/[id]">) {
   const { id } = await params;
-  const [{ people, household }, recipe] = await Promise.all([getContext(), getRecipe(id)]);
+  const [{ people, household }, recipe, week] = await Promise.all([getContext(), getRecipe(id), getWeekSlots()]);
   if (!recipe) notFound();
   const author = people.find((p) => p.user_id && p.user_id === recipe.author_id);
   const missing = recipe.equipment.filter((e) => !hasEquipmentFor([e], household.equipment));
@@ -82,6 +83,8 @@ export default async function RecipePage({ params }: PageProps<"/recettes/[id]">
           )}
         </div>
       </header>
+
+      <AddToWeekButton recipeId={id} recipeName={recipe.name} category={recipe.category} week={week} />
 
       <NutritionCard nutrition={recipeNutrition(recipe)} portionLabel={recipe.yield_label ? "par part" : "par portion"} />
 

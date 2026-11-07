@@ -36,7 +36,7 @@ export function ChooseMealButton({ planId, mealId, day, slot }: { planId: string
       {open && (
         <RecipeSheet
           onClose={() => setOpen(false)}
-          categories={slot === "extra" ? ["petit-dej", "gouter"] : ["plat"]}
+          categories={slot === "extra" ? ["plat", "petit-dej", "gouter"] : ["plat"]}
           day={slot === "extra" ? undefined : day}
           title={`Recette de ${slotLabel(day, slot)}`}
           onPick={(recipeId) => {
@@ -96,7 +96,7 @@ export function AddMealButton({ planId, day, slot }: { planId: string; day: numb
   );
 }
 
-/** Ajouter un petit-déj ou un goûter choisi à la main. */
+/** Ajouter en plus des créneaux un plat, un petit-déj ou un goûter choisi à la main. */
 export function ChooseExtraButton({ planId }: { planId: string }) {
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -116,7 +116,7 @@ export function ChooseExtraButton({ planId }: { planId: string }) {
       {open && (
         <RecipeSheet
           onClose={() => setOpen(false)}
-          categories={["petit-dej", "gouter"]}
+          categories={["plat", "petit-dej", "gouter"]}
           title="Ajouter en plus"
           onPick={(recipeId) => {
             setOpen(false);

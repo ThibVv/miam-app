@@ -9,6 +9,7 @@ import { EquipmentPicker } from "@/components/household/EquipmentPicker";
 import { PersonCard, type PersonValue } from "@/components/household/PersonCard";
 import { ChevronLeft } from "@/components/icons";
 import { LogoMark } from "@/components/Logo";
+import { MarkReleasesSeen } from "@/components/WhatsNew";
 
 const STEPS = ["Qui mange ?", "Préférences", "Matériel", "C'est parti"];
 
@@ -20,6 +21,7 @@ export default function NewHouseholdPage() {
   const [mode, setMode] = useState<"create" | "join">("create");
   return (
     <main className="mx-auto flex min-h-dvh max-w-md flex-col gap-5 px-5 py-8">
+      <MarkReleasesSeen />
       <div className="flex flex-col gap-1">
         <span className="flex items-center gap-1.5 text-[13px] font-medium text-muted">
           <span className="text-brand">

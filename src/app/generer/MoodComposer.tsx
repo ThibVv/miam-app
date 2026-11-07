@@ -265,10 +265,9 @@ function AddSheet({
     });
   }
 
-  const choices = [
-    ...people.map((p) => ({ key: p.id, label: p.name, ids: [p.id], person: p as Person | undefined })),
-    ...(people.length > 1 ? [{ key: "tous", label: people.length === 2 ? "Vous deux" : "Tout le monde", ids: people.map((p) => p.id), person: undefined }] : []),
-  ];
+  // Chaque personne se coche à part (2 sur 3, par exemple) ; « tout le monde » coche tout d'un coup
+  const toggle = (id: string) => setEaters((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : people.map((p) => p.id).filter((x) => x === id || cur.includes(x))));
+  const allLabel = people.length === 2 ? "Vous deux" : "Tout le monde";
 
   return (
     <div className="fixed inset-0 z-40 flex items-end justify-center">
@@ -294,30 +293,42 @@ function AddSheet({
         </div>
 
         <fieldset className="flex flex-col gap-2">
-          <legend className="mb-2 text-[15px] font-semibold">Pour qui ?</legend>
-          <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${Math.min(choices.length, 3)}, minmax(0, 1fr))` }}>
-            {choices.map((c) => {
-              const on = eaters.length === c.ids.length && c.ids.every((id) => eaters.includes(id));
+          <legend className="mb-2 flex w-full items-center justify-between text-[15px] font-semibold">
+            Pour qui ?
+            {people.length > 1 && (
+              <button
+                type="button"
+                aria-pressed={everyone}
+                onClick={() => setEaters(people.map((p) => p.id))}
+                className={`min-h-8 rounded-full border px-3 text-xs font-semibold ${everyone ? "border-brand bg-brand text-white" : "border-line bg-surface text-ink-2"}`}
+              >
+                {allLabel}
+              </button>
+            )}
+          </legend>
+          <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${Math.min(people.length, 3)}, minmax(0, 1fr))` }}>
+            {people.map((p) => {
+              const on = eaters.includes(p.id);
               return (
                 <button
-                  key={c.key}
+                  key={p.id}
                   type="button"
                   aria-pressed={on}
-                  onClick={() => setEaters(c.ids)}
-                  className={`flex min-h-16 flex-col items-center justify-center gap-1 rounded-[14px] border px-1 text-[13px] ${on ? "border-2 border-brand bg-brand-soft font-semibold text-brand-dark" : "border-line bg-surface font-medium"}`}
+                  onClick={() => toggle(p.id)}
+                  className={`relative flex min-h-16 flex-col items-center justify-center gap-1 rounded-[14px] border px-1 text-[13px] ${on ? "border-2 border-brand bg-brand-soft font-semibold text-brand-dark" : "border-line bg-surface font-medium"}`}
                 >
-                  <span className="flex">
-                    {(c.person ? [c.person] : people).map((p, j) => (
-                      <span key={p.id} className={j ? "-ml-2" : ""}>
-                        <Avatar person={p} size={24} />
-                      </span>
-                    ))}
-                  </span>
-                  <span className="max-w-full truncate">{c.label}</span>
+                  {on && (
+                    <span aria-hidden className="absolute top-1.5 right-1.5 flex size-4 items-center justify-center rounded-full bg-brand text-[10px] text-white">
+                      ✓
+                    </span>
+                  )}
+                  <Avatar person={p} size={24} />
+                  <span className="max-w-full truncate">{p.name}</span>
                 </button>
               );
             })}
           </div>
+          {people.length > 1 && <span className="text-xs text-muted">Touchez chaque personne pour l&apos;ajouter ou la retirer.</span>}
           {recipe.conflicts.some((c) => eaters.includes(c.personId)) && (
             <span className="text-xs text-warn">
               {recipe.conflicts

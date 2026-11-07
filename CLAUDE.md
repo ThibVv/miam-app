@@ -27,7 +27,8 @@ Les mêmes variables doivent exister côté **Vercel** (Settings → Environment
 Variables) pour que l'app déployée fonctionne.
 
 Les migrations SQL se passent à la main dans le **SQL Editor** de Supabase, dans
-l'ordre des noms de fichiers de `supabase/migrations/`. Celles qui commencent
+l'ordre des noms de fichiers de `supabase/migrations/`. Les photos envoyées depuis le téléphone vont dans le bucket
+`recipe-photos` (un dossier par foyer), créé par `20261109090000_photos_perso.sql`. Celles qui commencent
 par `v2_foyer_reel` repartent de zéro et **suppriment les données** ; les autres
 s'ajoutent sans rien casser.
 
@@ -53,6 +54,9 @@ s'ajoutent sans rien casser.
   (`.card`, `.field`, `.btn-primary`, `.chip`, `.skeleton`, `.rise`).
 - Les animations passent par les keyframes de `globals.css` et sont neutralisées
   sous `prefers-reduced-motion`.
+- **Chaque mise à jour visible** ajoute une entrée en tête de `src/lib/changelog.ts`
+  (id = date du jour, phrases pour quelqu'un qui ne code pas) : c'est l'encadré
+  « Quoi de neuf » que chacun voit une fois en rouvrant l'app.
 
 ## Règles métier à connaître
 

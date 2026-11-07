@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
@@ -35,6 +36,35 @@ export async function signUp(_: FormState, formData: FormData): Promise<FormStat
   });
   if (error) return { error: error.message };
   redirect("/foyer/nouveau");
+}
+
+export type ResetState = { error?: string; sent?: boolean } | undefined;
+
+/** Envoie l'e-mail de réinitialisation ; le lien revient sur /auth/confirm puis /mot-de-passe. */
+export async function requestPasswordReset(_: ResetState, formData: FormData): Promise<ResetState> {
+  const email = String(formData.get("email") ?? "").trim();
+  if (!email) return { error: "Indiquez votre e-mail." };
+  const origin = (await headers()).get("origin") ?? process.env.NEXT_PUBLIC_SITE_URL ?? "";
+  const supabase = await createClient();
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: `${origin}/auth/confirm?next=/mot-de-passe`,
+  });
+  if (error) {
+    return { error: error.status === 429 ? "Trop de demandes, réessayez dans une heure." : error.message };
+  }
+  return { sent: true };
+}
+
+export async function updatePassword(_: FormState, formData: FormData): Promise<FormState> {
+  const password = String(formData.get("password") ?? "");
+  if (password.length < 6) return { error: "Au moins 6 caractères." };
+  if (password !== String(formData.get("confirm") ?? "")) return { error: "Les deux mots de passe ne correspondent pas." };
+  const supabase = await createClient();
+  const { error } = await supabase.auth.updateUser({ password });
+  if (error) {
+    return { error: error.code === "same_password" ? "Choisissez un mot de passe différent de l'ancien." : error.message };
+  }
+  redirect("/");
 }
 
 export async function signOut() {

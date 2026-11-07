@@ -2,15 +2,15 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { CATEGORIES, type Category, type Person, type Recipe } from "@/lib/types";
+import { CATEGORIES, type Category, type Person, type RecipeSummary } from "@/lib/types";
 import { Avatar } from "@/components/ui";
+import { RecipePhoto } from "@/components/RecipePhoto";
 import { SearchIcon } from "@/components/icons";
 import { formatMinutes } from "@/lib/planner/schedule";
 
-const TINTS = ["#E7DCC8", "#D9E6DA", "#F1D9CC", "#DCE3F2", "#E9E2C9", "#E2D9E8"];
 const QUICK_TAGS = ["végé", "poisson", "volaille", "bœuf", "épicé", "express", "au four", "mijoté", "one pot", "poêle & wok"];
 
-export function RecipeLibrary({ recipes, people }: { recipes: Recipe[]; people: Person[] }) {
+export function RecipeLibrary({ recipes, people }: { recipes: RecipeSummary[]; people: Person[] }) {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<Category>("plat");
   const [tag, setTag] = useState<string | null>(null);
@@ -82,15 +82,22 @@ export function RecipeLibrary({ recipes, people }: { recipes: Recipe[]; people: 
         {visible.map((r, i) => {
           const total = r.prep_minutes + r.cook_minutes;
           return (
-            <Link key={r.id} href={`/recettes/${r.id}`} className="card flex flex-col overflow-hidden hover:ring-2 hover:ring-brand-soft">
-              <div className="flex h-20 items-end justify-between p-2" style={{ background: TINTS[i % TINTS.length] }}>
-                <span className="flex flex-wrap gap-1">
-                  {r.tags.slice(0, 2).map((t) => (
-                    <span key={t} className="rounded-full bg-white/85 px-2 py-0.5 text-[11px] font-medium text-ink-2">{t}</span>
-                  ))}
+            <Link
+              key={r.id}
+              href={`/recettes/${r.id}`}
+              style={{ "--i": Math.min(i, 10) } as React.CSSProperties}
+              className="card rise flex flex-col overflow-hidden transition-transform active:scale-[0.99] hover:ring-2 hover:ring-brand-soft"
+            >
+              <RecipePhoto name={r.name} url={r.image_url} index={i} className="h-24 w-full" glyph={28} sizes="(max-width: 480px) 45vw, 210px">
+                <span className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-1 bg-gradient-to-t from-black/45 to-transparent p-2">
+                  <span className="flex flex-wrap gap-1">
+                    {r.tags.slice(0, 2).map((t) => (
+                      <span key={t} className="rounded-full bg-white/90 px-2 py-0.5 text-[11px] font-medium text-ink-2">{t}</span>
+                    ))}
+                  </span>
+                  {r.author_id && byUser.get(r.author_id) && <Avatar person={byUser.get(r.author_id)} size={24} />}
                 </span>
-                {r.author_id && byUser.get(r.author_id) && <Avatar person={byUser.get(r.author_id)} size={24} />}
-              </div>
+              </RecipePhoto>
               <div className="flex flex-col gap-1 p-2.5 pb-3">
                 <h3 className="text-sm leading-tight font-semibold">{r.name}</h3>
                 <span className="text-xs text-muted">

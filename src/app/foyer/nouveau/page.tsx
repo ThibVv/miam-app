@@ -8,6 +8,7 @@ import { PERSON_COLORS } from "@/lib/tags";
 import { EquipmentPicker } from "@/components/household/EquipmentPicker";
 import { PersonCard, type PersonValue } from "@/components/household/PersonCard";
 import { ChevronLeft } from "@/components/icons";
+import { LogoMark } from "@/components/Logo";
 
 const STEPS = ["Qui mange ?", "Préférences", "Matériel", "C'est parti"];
 
@@ -20,7 +21,12 @@ export default function NewHouseholdPage() {
   return (
     <main className="mx-auto flex min-h-dvh max-w-md flex-col gap-5 px-5 py-8">
       <div className="flex flex-col gap-1">
-        <span className="text-[13px] font-medium text-muted">Bienvenue sur Miam</span>
+        <span className="flex items-center gap-1.5 text-[13px] font-medium text-muted">
+          <span className="text-brand">
+            <LogoMark size={20} />
+          </span>
+          Bienvenue sur Miam
+        </span>
         <h1 className="font-display text-[30px] font-bold tracking-[-0.5px]">Votre foyer</h1>
       </div>
       <div role="tablist" aria-label="Créer ou rejoindre un foyer" className="grid grid-cols-2 gap-1 rounded-xl bg-[#e4e7e1] p-1">

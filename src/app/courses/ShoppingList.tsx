@@ -6,7 +6,7 @@ import { addShoppingItem, removeShoppingItem, toggleShoppingItem } from "@/app/a
 import { AISLES, type Person, type ShoppingItem } from "@/lib/types";
 import { formatQuantity } from "@/lib/units";
 import { Avatar } from "@/components/ui";
-import { TrashIcon } from "@/components/icons";
+import { AisleIcon, TrashIcon } from "@/components/icons";
 
 type GroupBy = "aisle" | "recipe";
 
@@ -107,14 +107,20 @@ export function ShoppingList({ planId, initialItems, people, userId }: { planId:
 
       {groups.map(([group, list]) => (
         <section key={group} className="flex flex-col gap-1.5">
-          <h2 className="section-title">{group}</h2>
+          <h2 className="section-title flex items-center gap-1.5">
+            {groupBy === "aisle" && <AisleIcon aisle={group} size={16} />}
+            {group}
+          </h2>
           <div className="card rounded-[14px] px-3.5">
             {list.map((item) => {
               const by = item.checked_by ? personByUser.get(item.checked_by) : undefined;
               return (
                 <div key={`${group}-${item.id}`} className="flex min-h-[50px] items-center gap-3 border-b border-line-soft last:border-0">
-                  <label className="flex min-h-[50px] min-w-0 flex-1 cursor-pointer items-center gap-3">
+                  <label className="flex min-h-[50px] min-w-0 flex-1 cursor-pointer items-center gap-2.5">
                     <input type="checkbox" checked={item.checked} onChange={() => toggle(item)} className="size-[22px] shrink-0" />
+                    <span aria-hidden className={`shrink-0 transition-colors ${item.checked ? "text-[#c2c9c4]" : "text-muted"}`}>
+                      <AisleIcon aisle={item.aisle} size={18} />
+                    </span>
                     <span className="flex min-w-0 flex-1 flex-col">
                       <span className={`text-[15px] font-medium ${item.checked ? "text-[#6b746e] line-through" : ""}`}>{item.name}</span>
                       {groupBy === "aisle" && item.sources.length > 0 && (

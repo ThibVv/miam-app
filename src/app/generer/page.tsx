@@ -1,13 +1,12 @@
-import { getContext, getLatestPlan, getPantry, getRecipes } from "@/lib/data";
+import { getContext, getLatestPlan, getPantry, getRecipeFacets } from "@/lib/data";
 import { upcomingMonday } from "@/lib/week";
 import type { Criteria } from "@/lib/types";
 import { AppShell } from "@/components/ui";
 import { GenerateForm } from "./GenerateForm";
 
 export default async function GeneratePage() {
-  const [{ people }, recipes, latest, pantry] = await Promise.all([getContext(), getRecipes(), getLatestPlan(), getPantry()]);
-  const mains = recipes.filter((r) => r.category === "plat");
-  const tags = [...new Set(mains.flatMap((r) => r.tags))].sort((a, b) => a.localeCompare(b, "fr"));
+  // Seuls les tags et les compteurs : la page n'affiche aucune recette
+  const [{ people }, { tags, counts }, latest, pantry] = await Promise.all([getContext(), getRecipeFacets(), getLatestPlan(), getPantry()]);
   // 10 plats par semaine (midi + soir, lundi → vendredi), répartis entre les personnes
   const perPerson = Math.floor(10 / Math.max(people.length, 1));
 
@@ -38,8 +37,8 @@ export default async function GeneratePage() {
         tags={tags}
         initial={initial}
         weekStart={upcomingMonday()}
-        recipeCount={mains.length}
-        extrasAvailable={{ "petit-dej": recipes.filter((r) => r.category === "petit-dej").length, gouter: recipes.filter((r) => r.category === "gouter").length }}
+        recipeCount={counts.plat}
+        extrasAvailable={{ "petit-dej": counts["petit-dej"], gouter: counts.gouter }}
         pantry={pantry}
       />
     </AppShell>

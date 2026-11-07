@@ -30,6 +30,54 @@ input[type="range"] {
   accent-color: var(--color-brand);
 }
 
+/* Reflet qui balaie les blocs gris pendant le chargement */
+@keyframes shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+
+/* Arrivée des cartes et des listes */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+}
+
+/* Panneau qui monte depuis le bas (sélecteur de recette) */
+@keyframes slide-up {
+  from {
+    transform: translateY(14px);
+    opacity: 0;
+  }
+}
+
+/* Barres du guide de batch : elles se déploient depuis leur début */
+@keyframes grow {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+/* Respecte le réglage système « réduire les animations » */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0s !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
 @layer components {
   .card {
     @apply rounded-2xl bg-surface;
@@ -54,5 +102,26 @@ input[type="range"] {
   }
   .chip {
     @apply rounded-full bg-chip px-2 py-0.5 text-[11px] text-ink-2;
+  }
+  .skeleton {
+    @apply rounded-xl bg-[#e7eae5];
+    background-image: linear-gradient(90deg, transparent 0%, rgb(255 255 255 / 0.65) 50%, transparent 100%);
+    background-size: 200% 100%;
+    animation: shimmer 1.4s linear infinite;
+  }
+  /* Apparition en cascade : chaque élément décale son départ (--i) */
+  .rise {
+    animation: rise 0.34s cubic-bezier(0.22, 0.8, 0.3, 1) backwards;
+    animation-delay: calc(var(--i, 0) * 45ms);
+  }
+  /* Contenu d'un écran qui arrive : rend le changement d'onglet moins sec */
+  .page-enter {
+    animation: rise 0.26s cubic-bezier(0.22, 0.8, 0.3, 1);
+  }
+  /* Barre du diagramme de postes */
+  .bar {
+    animation: grow 0.45s cubic-bezier(0.22, 0.8, 0.3, 1) backwards;
+    animation-delay: calc(var(--i, 0) * 30ms);
+    transform-origin: left center;
   }
 }

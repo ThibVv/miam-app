@@ -1,4 +1,4 @@
-import { getContext, getLatestPlan, getRecipes } from "@/lib/data";
+import { getContext, getLatestPlan, getPlanRecipes } from "@/lib/data";
 import { stationCapacities } from "@/lib/equipment";
 import { formatMinutes, groupedPrep, scheduleBatch } from "@/lib/planner/schedule";
 import { cookingDay } from "@/lib/week";
@@ -6,7 +6,7 @@ import { AppShell, EmptyState, PageHeader } from "@/components/ui";
 import { PrepGuide } from "./PrepGuide";
 
 export default async function PrepPage() {
-  const [{ people, household }, plan, recipes] = await Promise.all([getContext(), getLatestPlan(), getRecipes()]);
+  const [{ people, household }, plan] = await Promise.all([getContext(), getLatestPlan()]);
 
   if (!plan) {
     return (
@@ -17,8 +17,8 @@ export default async function PrepPage() {
     );
   }
 
-  const byId = new Map(recipes.map((r) => [r.id, r]));
-  const planRecipes = [...new Set(plan.plan_meals.map((m) => m.recipe_id))].map((id) => byId.get(id)).filter((r) => r != null);
+  const planRecipes = await getPlanRecipes([...new Set(plan.plan_meals.map((m) => m.recipe_id))]);
+  const byId = new Map(planRecipes.map((r) => [r.id, r]));
   const cooks = people.map((p) => p.id);
   const capacities = stationCapacities(household.equipment, household.burners);
   const schedule = scheduleBatch(planRecipes, cooks, capacities);

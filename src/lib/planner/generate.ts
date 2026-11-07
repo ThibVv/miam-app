@@ -1,5 +1,6 @@
 import { ingredientKey } from "@/lib/units";
 import { hasEquipmentFor } from "@/lib/equipment";
+import { hasProtein, recipeNutrition } from "@/lib/nutrition/analyze";
 import { inPantry } from "@/lib/planner/shopping";
 import { EXTRA_CATEGORIES, type Category, type Criteria, type PlanMeal, type Recipe, type Slot } from "@/lib/types";
 
@@ -147,6 +148,37 @@ function score(r: Recipe, ctx: ScoreContext): number {
   const weeks = ctx.weeksSinceEaten.get(r.id);
   if (weeks != null && weeks < criteria.avoidRecentWeeks) s -= 4;
   else if (weeks == null) s += 0.5; // jamais cuisinée : petit bonus nouveauté
+
+  s += nutritionScore(r, selected);
+
+  return s;
+}
+
+/**
+ * Équilibre de la semaine : on pousse ce qui manque encore (poisson, légumes,
+ * légumineuses) et on écarte les plats qui n'apportent aucune protéine.
+ * Les poids restent inférieurs à ceux des envies et du placard : la nutrition
+ * départage, elle ne décide pas à la place du foyer.
+ */
+function nutritionScore(r: Recipe, selected: Recipe[]): number {
+  const mine = recipeNutrition(r);
+  const chosen = selected.map(recipeNutrition);
+  let s = 0;
+
+  if (!hasProtein(r)) s -= 2;
+
+  const fish = mine.families.poisson ?? 0;
+  if (fish > 0 && !chosen.some((x) => (x.families.poisson ?? 0) > 0)) s += 2;
+
+  const veg = mine.families.legume ?? 0;
+  if (veg === 0) s -= 1;
+  else if (veg >= 150 && chosen.filter((x) => (x.families.legume ?? 0) >= 150).length < 3) s += 1.2;
+
+  const pulses = mine.families.legumineuse ?? 0;
+  if (pulses > 0 && !chosen.some((x) => (x.families.legumineuse ?? 0) > 0)) s += 1;
+
+  // Une semaine tout en viande rouge : on freine à partir de la moitié
+  if ((mine.families.viande ?? 0) > 0 && chosen.filter((x) => (x.families.viande ?? 0) > 0).length >= Math.max(chosen.length / 2, 3)) s -= 1;
 
   return s;
 }

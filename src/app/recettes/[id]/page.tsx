@@ -72,7 +72,7 @@ export default async function RecipePage({ params }: PageProps<"/recettes/[id]">
           </span>
         )}
         <div className="flex flex-col gap-1.5 border-t border-line-soft pt-2.5">
-          <RecipePhotoButton recipeId={id} hasPhoto={!!recipe.image_url} />
+          <RecipePhotoButton recipeId={id} householdId={household.id} hasPhoto={!!recipe.image_url} />
           {recipe.image_author && (
             <span className="text-[11px] text-muted">
               Photo {recipe.image_author} sur{" "}

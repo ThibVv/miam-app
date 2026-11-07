@@ -269,7 +269,9 @@ export async function saveRecipe(draft: RecipeDraft, id?: string): Promise<{ id?
 
 export async function deleteRecipe(id: string) {
   const { supabase } = await getContext();
+  const { data: recipe } = await supabase.from("recipes").select("image_url").eq("id", id).maybeSingle();
   await supabase.from("recipes").delete().eq("id", id);
+  await dropUploadedPhoto(supabase, recipe?.image_url as string | null);
   revalidatePath("/recettes");
   redirect("/recettes");
 }
@@ -296,7 +298,7 @@ export async function fetchRecipePhoto(recipeId: string, skip = 0): Promise<{ ur
   const { supabase } = await getContext();
   if (!photosAvailable()) return { error: "Les photos ne sont pas configurées : ajoutez UNSPLASH_ACCESS_KEY dans .env.local." };
 
-  const { data: recipe } = await supabase.from("recipes").select("id, name").eq("id", recipeId).maybeSingle();
+  const { data: recipe } = await supabase.from("recipes").select("id, name, image_url").eq("id", recipeId).maybeSingle();
   if (!recipe) return { error: "Recette introuvable." };
 
   try {
@@ -307,6 +309,7 @@ export async function fetchRecipePhoto(recipeId: string, skip = 0): Promise<{ ur
       .update({ image_url: photo.url, image_author: photo.author, image_source: photo.source })
       .eq("id", recipeId);
     if (error) return { error: error.message };
+    await dropUploadedPhoto(supabase, recipe.image_url as string | null);
     revalidatePath("/", "layout");
     return { url: photo.url };
   } catch (e) {
@@ -317,10 +320,36 @@ export async function fetchRecipePhoto(recipeId: string, skip = 0): Promise<{ ur
   }
 }
 
+const PHOTO_BUCKET = "recipe-photos";
+
+/** Supprime du stockage une photo envoyée depuis le téléphone (pas celles d'Unsplash). */
+async function dropUploadedPhoto(supabase: SupabaseClient, imageUrl: string | null | undefined) {
+  const marker = `/storage/v1/object/public/${PHOTO_BUCKET}/`;
+  if (!imageUrl?.includes(marker)) return;
+  await supabase.storage.from(PHOTO_BUCKET).remove([decodeURIComponent(imageUrl.split(marker)[1])]);
+}
+
+/** Enregistre la photo qu'on vient d'envoyer depuis le téléphone (déjà dans le stockage du foyer). */
+export async function setUploadedPhoto(recipeId: string, path: string): Promise<{ error?: string }> {
+  const { supabase, household } = await getContext();
+  if (!path.startsWith(`${household.id}/`)) return { error: "Photo introuvable." };
+  const { data: recipe } = await supabase.from("recipes").select("image_url").eq("id", recipeId).maybeSingle();
+  if (!recipe) return { error: "Recette introuvable." };
+
+  const url = supabase.storage.from(PHOTO_BUCKET).getPublicUrl(path).data.publicUrl;
+  const { error } = await supabase.from("recipes").update({ image_url: url, image_author: null, image_source: null }).eq("id", recipeId);
+  if (error) return { error: error.message };
+  await dropUploadedPhoto(supabase, recipe.image_url as string | null);
+  revalidatePath("/", "layout");
+  return {};
+}
+
 /** Retire la photo d'une recette : on retrouve la vignette colorée. */
 export async function removeRecipePhoto(recipeId: string) {
   const { supabase } = await getContext();
+  const { data: recipe } = await supabase.from("recipes").select("image_url").eq("id", recipeId).maybeSingle();
   await supabase.from("recipes").update({ image_url: null, image_author: null, image_source: null }).eq("id", recipeId);
+  await dropUploadedPhoto(supabase, recipe?.image_url as string | null);
   revalidatePath("/", "layout");
 }
 

@@ -1,12 +1,14 @@
 import Link from "next/link";
 import type { Person } from "@/lib/types";
 import { BottomNav } from "@/components/BottomNav";
+import { WhatsNew } from "@/components/WhatsNew";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <>
       <main className="page-enter mx-auto flex min-h-dvh max-w-md flex-col gap-3.5 px-5 pt-6 pb-28">{children}</main>
       <BottomNav />
+      <WhatsNew />
     </>
   );
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseIngredientLine, parseIsoDuration, parseRecipeFromHtml } from "@/lib/import/parse-recipe";
+import { guessHandsBusy, guessStation, parseIngredientLine, parseIsoDuration, parseRecipeFromHtml } from "@/lib/import/parse-recipe";
 
 describe("parseIngredientLine", () => {
   it.each([
@@ -64,5 +64,28 @@ describe("parseRecipeFromHtml", () => {
 
   it("convertit les durées ISO", () => {
     expect(parseIsoDuration("PT1H30M")).toBe(90);
+  });
+});
+
+describe("guessStation / guessHandsBusy", () => {
+  it("la fourchette n'est pas un four, la plaque à pâtisserie n'est pas une plaque de cuisson", () => {
+    expect(guessStation("Marquer le dessus de chaque boule avec une fourchette.")).toBe("plan");
+    expect(guessStation("Pocher de petites boules sur une plaque recouverte de papier cuisson.")).toBe("plan");
+    expect(guessStation("Dorer au pinceau avec le jaune d'œuf.")).toBe("plan");
+    expect(guessStation("Faire dorer les oignons à la poêle.")).toBe("plaque");
+  });
+
+  it("sécher et figer sont des temps de repos, prélever ne fait pas lever la pâte", () => {
+    expect(guessStation("Laisser sécher 12 heures à température ambiante.")).toBe("repos");
+    expect(guessStation("Laisser figer la ganache quelques minutes.")).toBe("repos");
+    expect(guessStation("Prélever une petite tasse de meringue.")).toBe("plan");
+    expect(guessStation("Laisser lever la pâte 1 heure.")).toBe("repos");
+  });
+
+  it("ce qui cuit au four tourne tout seul", () => {
+    const text = "Torréfier les noisettes au four à 160 °C pendant 20 min.";
+    expect(guessStation(text)).toBe("four");
+    expect(guessHandsBusy(text, "four", 20)).toBe(false);
+    expect(guessHandsBusy("Préchauffer le four à 180 °C.", "four", 2)).toBe(true);
   });
 });

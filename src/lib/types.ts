@@ -2,12 +2,13 @@
 export type Station = string;
 export type Slot = "midi" | "soir" | "extra";
 export type Storage = "frigo" | "congelo";
-export type Category = "plat" | "petit-dej" | "gouter";
+export type Category = "plat" | "petit-dej" | "gouter" | "noel";
 
 export const CATEGORIES: { value: Category; label: string }[] = [
   { value: "plat", label: "Plat" },
   { value: "petit-dej", label: "Petit-déj" },
   { value: "gouter", label: "Goûter" },
+  { value: "noel", label: "Noël" },
 ];
 
 /** Catégories ajoutées « en plus » des repas de la semaine */
@@ -21,6 +22,7 @@ export const AISLES = [
   "Épicerie sucrée",
   "Surgelés",
   "Boulangerie",
+  "Maison & hygiène",
   "Autre",
 ] as const;
 
@@ -142,6 +144,8 @@ export interface PlanMeal {
   storage: Storage;
   /** Personnes qui mangent ce plat à ce créneau ; vide = tout le foyer (semaines d'avant ce champ) */
   eaters?: string[];
+  /** Parts voulues (Noël : 80 pièces, 8 convives) ; remplace le calcul par mangeur */
+  portions?: number | null;
 }
 
 export interface MealPlan {

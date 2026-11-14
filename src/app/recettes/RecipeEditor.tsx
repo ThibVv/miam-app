@@ -217,7 +217,7 @@ export function RecipeEditor({ initial, id }: { initial?: RecipeDraft; id?: stri
             <input id="name" value={draft.name} onChange={(e) => set("name", e.target.value)} className="field text-base font-semibold" />
           </div>
 
-          <div role="radiogroup" aria-label="Catégorie" className="grid grid-cols-3 gap-1">
+          <div role="radiogroup" aria-label="Catégorie" className="grid grid-cols-4 gap-1">
             {CATEGORIES.map((c) => (
               <button
                 type="button"

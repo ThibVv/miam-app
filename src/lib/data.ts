@@ -76,7 +76,7 @@ export const getRecipeFacets = cache(async (): Promise<{ tags: string[]; counts:
   const { supabase, household } = await getContext();
   const { data } = await supabase.from("recipes").select("category, tags").eq("household_id", household.id);
   const rows = (data ?? []) as { category: Category; tags: string[] }[];
-  const counts = { plat: 0, "petit-dej": 0, gouter: 0 } as Record<Category, number>;
+  const counts = { plat: 0, "petit-dej": 0, gouter: 0, noel: 0 } as Record<Category, number>;
   const tags = new Set<string>();
   for (const r of rows) {
     counts[r.category] = (counts[r.category] ?? 0) + 1;
@@ -98,11 +98,26 @@ export async function getLatestPlan(): Promise<MealPlan | null> {
     .from("meal_plans")
     .select("*, plan_meals(*)")
     .eq("household_id", household.id)
+    .eq("kind", "semaine")
     .order("week_start", { ascending: false })
     .limit(1)
     .maybeSingle();
   return (data as MealPlan) ?? null;
 }
+
+/** Le planning de Noël le plus récent : ses recettes, ses invités, sa liste de courses à part. */
+export const getNoelPlan = cache(async (): Promise<(MealPlan & { guests: number | null }) | null> => {
+  const { supabase, household } = await getContext();
+  const { data } = await supabase
+    .from("meal_plans")
+    .select("*, plan_meals(*)")
+    .eq("household_id", household.id)
+    .eq("kind", "noel")
+    .order("week_start", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return (data as MealPlan & { guests: number | null }) ?? null;
+});
 
 export interface WeekSlots {
   planId: string;
@@ -117,6 +132,7 @@ export const getWeekSlots = cache(async (): Promise<WeekSlots | null> => {
     .from("meal_plans")
     .select("id, week_start, plan_meals(id, day, slot, recipes(name))")
     .eq("household_id", household.id)
+    .eq("kind", "semaine")
     .order("week_start", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -148,6 +164,7 @@ export async function getWeeksSinceEaten(refWeek: string): Promise<Map<string, n
     .from("meal_plans")
     .select("week_start, plan_meals(recipe_id)")
     .eq("household_id", household.id)
+    .eq("kind", "semaine")
     .lt("week_start", refWeek);
   const out = new Map<string, number>();
   for (const plan of data ?? []) {

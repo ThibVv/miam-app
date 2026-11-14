@@ -12,6 +12,15 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    id: "2026-11-14",
+    title: "Noël et des courses plus pratiques",
+    items: [
+      "Noël a son espace : les recettes de Noël (9 bredele du livre déjà ajoutés), un menu avec les invités et les fournées, une liste de courses à part avec des flocons, et la préparation de Noël.",
+      "Courses : ce qui est coché descend dans « Dans le panier », replié en bas de la liste.",
+      "Courses : « Ajouter un article » pour tout ce qui ne se mange pas (éponges, lessive…), rangé dans le bon rayon. Ces ajouts restent d'une semaine à l'autre tant qu'ils ne sont pas achetés.",
+    ],
+  },
+  {
     id: "2026-11-09",
     title: "Plats, photos et nouveautés",
     items: [

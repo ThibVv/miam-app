@@ -163,6 +163,7 @@ export const AISLE_ICONS: Record<string, (p: { size?: number }) => React.ReactEl
   "Épicerie sucrée": CakeIcon,
   Surgelés: SnowIcon,
   Boulangerie: BreadIcon,
+  "Maison & hygiène": BagIcon,
   Autre: BagIcon,
 };
 

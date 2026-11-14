@@ -33,7 +33,7 @@ export function RecipeLibrary({ recipes, people, week }: { recipes: RecipeSummar
 
   return (
     <>
-      <div role="tablist" aria-label="Catégorie" className="grid grid-cols-3 gap-1 rounded-xl bg-[#e4e7e1] p-1">
+      <div role="tablist" aria-label="Catégorie" className="grid grid-cols-4 gap-1 rounded-xl bg-[#e4e7e1] p-1">
         {CATEGORIES.map((c) => (
           <button
             key={c.value}
@@ -55,6 +55,15 @@ export function RecipeLibrary({ recipes, people, week }: { recipes: RecipeSummar
         <span className="sr-only">Rechercher une recette</span>
         <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Plat, ingrédient, tag…" className="flex-1 bg-transparent text-[15px] outline-none" />
       </label>
+
+      {category === "noel" && (
+        <Link href="/noel" className="flex min-h-12 items-center justify-between gap-3 rounded-[14px] bg-[#7a1f2b] px-4 text-sm font-semibold text-white">
+          <span>
+            <span aria-hidden>❄ </span>Ouvrir l&apos;espace Noël : menu, courses, préparation
+          </span>
+          <span aria-hidden>›</span>
+        </Link>
+      )}
 
       {category === "plat" && (
         <div className="-mx-5 flex gap-1.5 overflow-x-auto px-5 pb-1">

@@ -12,14 +12,17 @@ export interface ShoppingLine {
   inPantry: boolean;
 }
 
-/** Parts d'un repas : une par mangeur ; une ligne sans mangeurs (semaines d'avant) nourrit tout le foyer. */
+/**
+ * Parts d'un repas : celles demandées (Noël), sinon une par mangeur ; une ligne sans
+ * mangeurs (semaines d'avant) nourrit tout le foyer.
+ */
 export function partsOf(meal: PlanMeal, householdSize: number): number {
-  return meal.eaters?.length || householdSize;
+  return meal.portions || meal.eaters?.length || householdSize;
 }
 
-/** Combien de fois la recette est cuisinée : un plat est mis à l'échelle des parts, un extra est fait une fois. */
+/** Combien de fois la recette est cuisinée : à l'échelle des parts, sauf un extra sans parts demandées, fait une fois. */
 function scaleFor(meal: PlanMeal, recipe: Recipe, householdSize: number) {
-  return meal.slot === "extra" ? 1 : partsOf(meal, householdSize) / recipe.servings;
+  return meal.slot === "extra" && !meal.portions ? 1 : partsOf(meal, householdSize) / recipe.servings;
 }
 
 export interface CookedDish {
@@ -46,7 +49,7 @@ export function cookedDishes(meals: PlanMeal[], recipesById: Map<string, Recipe>
     const recipe = recipesById.get(meal.recipe_id);
     if (!recipe) continue;
     const dish = out.get(recipe.id) ?? { recipe, parts: 0, scale: 0, eaters: [] };
-    if (meal.slot === "extra") dish.scale = Math.max(dish.scale, 1);
+    if (meal.slot === "extra" && !meal.portions) dish.scale = Math.max(dish.scale, 1);
     else {
       dish.parts += partsOf(meal, people.length);
       dish.scale = dish.parts / recipe.servings;
@@ -79,6 +82,8 @@ export function buildShoppingList(meals: PlanMeal[], recipesById: Map<string, Re
     const scale = scaleFor(meal, recipe, householdSize);
 
     for (const ing of recipe.recipe_ingredients) {
+      // L'eau du robinet ne s'achète pas
+      if (ingredientKey(ing.name) === "eau") continue;
       const { unit, factor } = normalizeUnit(ing.unit);
       const key = `${ingredientKey(ing.name)}|${unit}`;
       const qty = ing.quantity == null ? null : ing.quantity * factor * scale;

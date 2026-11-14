@@ -7,7 +7,11 @@ const AISLE_KEYWORDS: [string, string[]][] = [
   ["Fruits & légumes", ["oignon", "ail", "échalote", "carotte", "courgette", "tomate", "poivron", "aubergine", "brocoli", "épinard", "courge", "butternut", "potiron", "poireau", "chou", "salade", "pomme de terre", "patate", "champignon", "citron", "coriandre", "persil", "basilic", "gingembre", "menthe", "avocat", "concombre", "céleri", "haricot vert", "petits pois", "ciboulette", "thym", "pomme", "banane", "framboise", "ananas", "estragon", "aneth", "romarin", "citronnelle", "piment frais", "salade"]],
   ["Boulangerie", ["pain", "baguette", "tortilla", "wrap", "pain à hot dog", "pain burger"]],
   ["Surgelés", ["surgelé", "surgelée", "surgelés"]],
-  ["Épicerie sucrée", ["sucre", "chocolat", "cacao", "levure chimique", "sirop", "flocons d'avoine", "flocons d’avoine", "vanille", "beurre de cacahuète", "confiture", "pépites", "sucre perlé", "farine", "protéine en poudre", "whey"]],
+  [
+    "Maison & hygiène",
+    ["papier toilette", "essuie-tout", "sopalin", "éponge", "liquide vaisselle", "pastilles lave-vaisselle", "lessive", "adoucissant", "sac poubelle", "sacs poubelle", "savon", "shampoing", "shampooing", "dentifrice", "brosse à dents", "gel douche", "déodorant", "coton", "mouchoir", "film alimentaire", "papier cuisson", "papier aluminium", "pile", "ampoule", "javel", "nettoyant", "couche", "serviette hygiénique", "tampon", "rasoir", "allumette", "bougie"],
+  ],
+  ["Épicerie sucrée", ["sucre", "sucre semoule", "chocolat", "cacao", "noisette", "amande", "pralin", "gelée", "confiture", "anis", "fleur de sel", "levure chimique", "sirop", "flocons d'avoine", "flocons d’avoine", "vanille", "beurre de cacahuète", "confiture", "pépites", "sucre perlé", "farine", "protéine en poudre", "whey"]],
   ["Épicerie", ["riz", "pâtes", "pates", "spaghetti", "tagliatelle", "nouilles", "udon", "ramen", "orzo", "lentille", "pois chiche", "huile", "vinaigre", "sauce", "épice", "curry", "cumin", "paprika", "curcuma", "bouillon", "kub", "conserve", "coulis", "lait de coco", "quinoa", "semoule", "polenta", "boulgour", "haricot rouge", "concentré", "pulpe", "moutarde", "miel", "sel", "poivre", "maïs", "soja", "cacahuète", "noix", "sésame", "olive", "pesto", "miso", "tomates concassées", "herbes de provence"]],
 ];
 
@@ -34,21 +38,27 @@ const APPLIANCE_STATIONS: [Station, RegExp][] = [
 export function guessStation(text: string): Station {
   const t = text.toLowerCase();
   // « si tu utilises un Cookeo » : simple alternative, pas le poste de l'étape
-  const main = t.replace(/\(.*?\)/g, "").replace(/si (tu utilises|vous utilisez)[^.]*\./g, "");
+  // Le papier cuisson et la dorure au pinceau ne disent rien du poste : c'est la plaque du four, pas les feux
+  const main = t
+    .replace(/\(.*?\)/g, "")
+    .replace(/si (tu utilises|vous utilisez)[^.]*\./g, "")
+    .replace(/papier (de )?cuisson|dore[rz]? au pinceau|badigeonne[rz]?/g, "");
   for (const [station, re] of APPLIANCE_STATIONS) if (re.test(main)) return station;
-  if (/(four|enfourne|gratin|rôti|roti|préchauff|prechauff|th\.\s?\d)/.test(main)) return "four";
-  if (/(mariner|réfrigér|refriger|reposer|repos|au frais|lever|pousser)/.test(main)) return "repos";
+  if (/(\bfour\b|enfourne|gratin|rôti|roti|préchauff|prechauff|th\.\s?\d)/.test(main)) return "four";
+  if (/(mariner|réfrigér|refriger|reposer|repos|au frais|(?<![a-zàâçéèêëîïôûùüÿ])lever|pousser|sécher|secher|figer)/.test(main)) return "repos";
   if (/(poêle|poele|casserole|faitout|cocotte|marmite|sauteuse|wok|mijot|cuire|cuisson|bouill|revenir|dorer|frire|sauter|fondre|porter à|saisir|chauffer)/.test(main)) return "plaque";
   return "plan";
 }
 
-const PASSIVE_COOKING = /(laisse[rz]? (mijoter|cuire|mijot|reposer|refroidir|lever|gonfler|dégorger)|mijote|enfourne|au four pendant|cuire au four|selon les instructions|sous pression|(fais|faites|faire) cuire (le riz|les pâtes|les pates|le quinoa|les nouilles|la semoule|les pommes de terre))/;
+const PASSIVE_COOKING = /(laisse[rz]? (mijoter|cuire|mijot|reposer|refroidir|lever|gonfler|dégorger|sécher|figer)|mijote|enfourne|au four pendant|cuire au four|selon les instructions|sous pression|(fais|faites|faire) cuire (le riz|les pâtes|les pates|le quinoa|les nouilles|la semoule|les pommes de terre))/;
 
 export function guessHandsBusy(text: string, station: Station, duration?: number): boolean {
   const t = text.toLowerCase();
   if (station === "repos") return false;
   if (["mijoteuse", "multicuiseur", "cuiseur-riz", "robot-cuiseur", "machine-pain", "yaourtiere"].includes(station)) return false;
   if (PASSIVE_COOKING.test(t)) return false;
+  // Une fois au four, ça cuit tout seul (torréfier, griller…) ; seul le préchauffage est une action brève
+  if (station === "four" && duration != null && duration >= 10) return false;
   // Au-delà de 25 min, personne ne reste les mains occupées : c'est une cuisson qui tourne seule
   if (duration != null && duration >= 25 && !/(couper|coupe|éplucher|épluche|émincer|émince|hacher|façonner|former)/.test(t)) return false;
   return true;

@@ -16,6 +16,23 @@ import { AddMealButton, ChooseExtraButton, ChooseMealButton, RemoveDishButton, R
 
 const EXTRA_LABEL: Record<string, string> = { plat: "Plat", "petit-dej": "Petit-déj", gouter: "Goûter" };
 
+/** En novembre et décembre, un raccourci vers l'espace Noël. */
+function NoelBanner() {
+  const month = new Date().getMonth();
+  if (month !== 10 && month !== 11) return null;
+  return (
+    <Link href="/noel" className="flex min-h-12 items-center justify-between gap-3 rounded-[14px] bg-[#7a1f2b] px-4 py-3 text-white hover:bg-[#651823]">
+      <span className="flex flex-col gap-0.5">
+        <span className="text-[15px] font-semibold">
+          <span aria-hidden>❄ </span>Préparer Noël
+        </span>
+        <span className="text-xs text-white/75">Bredele, menu de fête, courses et préparation à part</span>
+      </span>
+      <ChevronRight size={20} />
+    </Link>
+  );
+}
+
 export default async function WeekPage() {
   const [{ people, household }, plan] = await Promise.all([getContext(), getLatestPlan()]);
   const personById = new Map(people.map((p) => [p.id, p]));
@@ -25,6 +42,7 @@ export default async function WeekPage() {
     return (
       <AppShell>
         <PageHeader title="Ma semaine" action={<PeopleBadge people={people} />} />
+        <NoelBanner />
         <EmptyState
           title="Aucune semaine planifiée"
           text="Laissez Miam choisir des plats à partager, ou composez la semaine selon vos envies : la liste de courses et le guide de préparation suivent."
@@ -81,6 +99,8 @@ export default async function WeekPage() {
           </div>
         ))}
       </div>
+
+      <NoelBanner />
 
       <Link href="/prep" className="flex min-h-11 items-center justify-between gap-3 rounded-[14px] bg-brand px-4 py-3 text-white hover:bg-brand-dark">
         <span className="flex flex-col gap-0.5">

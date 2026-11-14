@@ -5,17 +5,17 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
-import { getContext, getPantry, getPlanRecipes, getRecipeSummaries, getRecipes, getWeeksSinceEaten } from "@/lib/data";
+import { getContext, getNoelPlan, getPantry, getPlanRecipes, getRecipeSummaries, getRecipes, getWeeksSinceEaten } from "@/lib/data";
 import { STARTER_RECIPES } from "@/lib/starter-recipes";
 import { completeWeek, daysAfterCooking, freeSlotsOf, generatePlan, pickExtras, pickReplacement, placeChosen, type GenerateInput } from "@/lib/planner/generate";
 import { criteriaFor } from "@/lib/planner/criteria";
 import { searchByMood } from "@/lib/planner/mood";
 import { mentionsIngredient } from "@/lib/units";
 import { buildShoppingList, shoppingKey } from "@/lib/planner/shopping";
-import { parseRecipeFromHtml } from "@/lib/import/parse-recipe";
+import { guessAisle, parseRecipeFromHtml } from "@/lib/import/parse-recipe";
 import { fetchPublicPage } from "@/lib/import/fetch-page";
 import { findPhoto, photosAvailable } from "@/lib/images/photo";
-import type { Category, Criteria, PlanMeal, Recipe, RecipeChoice, RecipeDraft } from "@/lib/types";
+import type { Category, Criteria, PlanMeal, Recipe, RecipeChoice, RecipeDraft, ShoppingItem } from "@/lib/types";
 
 export type FormState = { error?: string } | undefined;
 
@@ -437,9 +437,9 @@ async function loadPlan(planId: string) {
 /** La semaine qui commence à `weekStart`, créée vide si besoin (pour la remplir à la main). */
 async function ensurePlan(weekStart: string): Promise<LoadedPlan | null> {
   const { supabase, household, people, userId } = await getContext();
-  const { data } = await supabase.from("meal_plans").select("*, plan_meals(*)").eq("household_id", household.id).eq("week_start", weekStart).maybeSingle();
+  const { data } = await supabase.from("meal_plans").select("*, plan_meals(*)").eq("household_id", household.id).eq("kind", "semaine").eq("week_start", weekStart).maybeSingle();
   if (data) return data as LoadedPlan;
-  const { data: last } = await supabase.from("meal_plans").select("criteria").eq("household_id", household.id).order("week_start", { ascending: false }).limit(1).maybeSingle();
+  const { data: last } = await supabase.from("meal_plans").select("criteria").eq("household_id", household.id).eq("kind", "semaine").order("week_start", { ascending: false }).limit(1).maybeSingle();
   const criteria = criteriaFor(people, last?.criteria as Partial<Criteria> | undefined);
   const { data: created } = await supabase
     .from("meal_plans")
@@ -464,7 +464,13 @@ export async function generateWeek(criteria: Criteria, weekStart: string): Promi
   const { meals, warnings } = generatePlan(input);
   if (!meals.length) return { warnings, error: "Aucune recette disponible : ajoutez-en d'abord." };
 
-  await supabase.from("meal_plans").delete().eq("household_id", household.id).eq("week_start", weekStart);
+  // Les articles ajoutés à la main et pas encore achetés suivent d'une semaine à l'autre
+  const { data: previous } = await supabase.from("meal_plans").select("id").eq("household_id", household.id).eq("kind", "semaine").order("week_start", { ascending: false }).limit(1).maybeSingle();
+  const { data: kept } = previous
+    ? await supabase.from("shopping_items").select("name, quantity, unit, aisle").eq("plan_id", previous.id).eq("manual", true).eq("checked", false)
+    : { data: [] };
+
+  await supabase.from("meal_plans").delete().eq("household_id", household.id).eq("kind", "semaine").eq("week_start", weekStart);
   const { data: plan, error } = await supabase
     .from("meal_plans")
     .insert({ household_id: household.id, week_start: weekStart, criteria, created_by: userId })
@@ -474,6 +480,7 @@ export async function generateWeek(criteria: Criteria, weekStart: string): Promi
 
   const { error: mealsError } = await supabase.from("plan_meals").insert(meals.map((m) => ({ ...m, plan_id: plan.id })));
   if (mealsError) return { warnings, error: mealsError.message };
+  if (kept?.length) await supabase.from("shopping_items").insert(kept.map((k) => ({ ...k, plan_id: plan.id, manual: true })));
   await rebuildShopping(supabase, plan.id, meals, input.recipes);
   revalidatePath("/", "layout");
   return { warnings };
@@ -637,7 +644,8 @@ export interface MoodResult {
 /** Recettes de la bibliothèque qui répondent à une envie écrite à la main. */
 export async function searchMood(query: string): Promise<{ understood: string[]; results: MoodResult[] }> {
   const { people } = await getContext();
-  const recipes = await getRecipeSummaries();
+  // Noël a son propre espace : ses recettes ne se proposent pas pour la semaine
+  const recipes = (await getRecipeSummaries()).filter((r) => r.category !== "noel");
   const { understood, matches } = searchByMood(query, recipes);
   const byId = new Map(recipes.map((r) => [r.id, r]));
   const results = matches.slice(0, 30).map((m) => {
@@ -732,13 +740,101 @@ export async function toggleShoppingItem(id: string, checked: boolean) {
     .eq("id", id);
 }
 
-export async function addShoppingItem(planId: string, name: string) {
+export async function addShoppingItem(planId: string, name: string): Promise<ShoppingItem | null> {
   const { supabase } = await getContext();
-  if (!name.trim()) return;
-  await supabase.from("shopping_items").insert({ plan_id: planId, name: name.trim(), manual: true, aisle: "Autre" });
+  if (!name.trim()) return null;
+  // Le rayon se devine aussi pour ce qui ne se mange pas (éponges, lessive…)
+  const { data } = await supabase
+    .from("shopping_items")
+    .insert({ plan_id: planId, name: name.trim(), manual: true, aisle: guessAisle(name) })
+    .select("*")
+    .single();
+  return (data as ShoppingItem) ?? null;
 }
 
 export async function removeShoppingItem(id: string) {
   const { supabase } = await getContext();
   await supabase.from("shopping_items").delete().eq("id", id);
+}
+
+// Noël ------------------------------------------------------------------------
+
+/** Le prochain Noël : celui de cette année, ou de l'année suivante passé le 26 décembre. */
+function nextChristmas(): string {
+  const now = new Date();
+  const year = now.getMonth() === 11 && now.getDate() > 26 ? now.getFullYear() + 1 : now.getFullYear();
+  return `${year}-12-24`;
+}
+
+type NoelPlan = LoadedPlan & { guests: number | null };
+
+async function ensureNoelPlan(): Promise<NoelPlan | null> {
+  const { supabase, household, people, userId } = await getContext();
+  const existing = await getNoelPlan();
+  if (existing) return existing as unknown as NoelPlan;
+  const { data } = await supabase
+    .from("meal_plans")
+    .insert({ household_id: household.id, week_start: nextChristmas(), kind: "noel", guests: Math.max(people.length, 1), criteria: {}, created_by: userId })
+    .select("*, plan_meals(*)")
+    .single();
+  return (data as NoelPlan) ?? null;
+}
+
+/** Après chaque changement du menu de Noël : sa liste de courses à part se recalcule. */
+async function refreshNoel(planId: string) {
+  const { supabase } = await getContext();
+  const plan = await loadPlan(planId);
+  if (plan) await rebuildShopping(supabase, planId, plan.plan_meals, await planRecipesOf(plan.plan_meals));
+  revalidatePath("/", "layout");
+}
+
+/** Ajoute une recette au menu de Noël : une fournée pour les biscuits, une part par invité pour un plat. */
+export async function addNoelRecipe(recipeId: string): Promise<{ error?: string }> {
+  const { supabase, people } = await getContext();
+  const plan = await ensureNoelPlan();
+  if (!plan) return { error: "Impossible de préparer Noël." };
+  if (plan.plan_meals.some((m) => m.recipe_id === recipeId)) return {};
+  const [recipe] = await getPlanRecipes([recipeId]);
+  if (!recipe) return { error: "Recette introuvable." };
+
+  const portions = recipe.yield_label ? recipe.servings : (plan.guests ?? Math.max(people.length, 1));
+  const { error } = await supabase
+    .from("plan_meals")
+    .insert({ plan_id: plan.id, recipe_id: recipeId, person_id: null, day: 0, slot: "extra", storage: "frigo", eaters: [], portions });
+  if (error) return { error: error.message };
+  await refreshNoel(plan.id);
+  return {};
+}
+
+export async function setNoelPortions(planId: string, mealId: string, portions: number) {
+  const { supabase } = await getContext();
+  await supabase.from("plan_meals").update({ portions: Math.max(1, Math.round(portions)) }).eq("id", mealId).eq("plan_id", planId);
+  await refreshNoel(planId);
+}
+
+export async function removeNoelRecipe(planId: string, mealId: string) {
+  const { supabase } = await getContext();
+  await supabase.from("plan_meals").delete().eq("id", mealId).eq("plan_id", planId);
+  await refreshNoel(planId);
+}
+
+/** Change le nombre d'invités : les plats (pas les fournées de biscuits) suivent. */
+export async function setNoelGuests(planId: string, guests: number) {
+  const { supabase } = await getContext();
+  const count = Math.max(1, Math.min(40, Math.round(guests)));
+  await supabase.from("meal_plans").update({ guests: count }).eq("id", planId);
+  const plan = await loadPlan(planId);
+  if (plan) {
+    const recipes = await planRecipesOf(plan.plan_meals);
+    const dishes = plan.plan_meals.filter((m) => !recipes.find((r) => r.id === m.recipe_id)?.yield_label);
+    await Promise.all(dishes.map((m) => supabase.from("plan_meals").update({ portions: count }).eq("id", m.id)));
+  }
+  await refreshNoel(planId);
+}
+
+export async function setNoelDate(planId: string, date: string) {
+  const { supabase } = await getContext();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
+  await supabase.from("meal_plans").update({ week_start: date }).eq("id", planId);
+  revalidatePath("/", "layout");
 }

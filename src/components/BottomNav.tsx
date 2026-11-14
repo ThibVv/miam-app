@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { BookIcon, CalendarIcon, CartIcon, DiceIcon, PotIcon } from "@/components/icons";
+import { NavGarland } from "@/components/festive/Decorations";
 
 const TABS = [
   { href: "/", label: "Semaine", Icon: CalendarIcon },
@@ -19,6 +20,7 @@ export function BottomNav() {
       aria-label="Navigation principale"
       className="fixed inset-x-0 bottom-0 z-20 border-t border-line bg-surface pb-[env(safe-area-inset-bottom)]"
     >
+      <NavGarland />
       <div className="mx-auto flex h-[68px] max-w-md px-1.5">
         {TABS.map(({ href, label, Icon }) => {
           const active = href === "/" ? pathname === "/" : pathname.startsWith(href);

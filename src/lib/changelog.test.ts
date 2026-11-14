@@ -16,7 +16,7 @@ describe("Quoi de neuf", () => {
     expect(unseenReleases(RELEASES[1].id).map((r) => r.id)).toEqual([RELEASES[0].id]);
   });
 
-  it("quelqu'un qui n'a jamais rien vu voit les deux dernières", () => {
-    expect(unseenReleases(null)).toHaveLength(Math.min(2, RELEASES.length));
+  it("quelqu'un qui n'a jamais rien vu voit tout l'historique", () => {
+    expect(unseenReleases(null)).toEqual(RELEASES);
   });
 });

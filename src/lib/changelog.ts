@@ -12,6 +12,14 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    id: "2026-11-14-2",
+    title: "Un air de fête",
+    items: [
+      "Jusqu'à l'Épiphanie, l'app se met à l'heure de Noël : de la neige à l'ouverture, des boules qui se balancent en haut des pages et une guirlande lumineuse sur la barre du bas.",
+      "Trop chargé ? Les décorations se coupent dans la page Foyer.",
+    ],
+  },
+  {
     id: "2026-11-14",
     title: "Noël et des courses plus pratiques",
     items: [
@@ -45,7 +53,7 @@ export const SEEN_KEY = "nouveautes-vues";
 
 /** Ce qu'il reste à montrer : tout ce qui est plus récent que la dernière nouveauté vue. */
 export function unseenReleases(lastSeen: string | null): Release[] {
-  // Jamais rien vu : quelqu'un qui utilisait déjà l'app avant l'encadré, on montre les deux dernières
-  if (!lastSeen) return RELEASES.slice(0, 2);
+  // Jamais rien vu : quelqu'un qui utilisait déjà l'app avant l'encadré, on lui montre tout
+  if (!lastSeen) return RELEASES;
   return RELEASES.filter((r) => r.id > lastSeen);
 }

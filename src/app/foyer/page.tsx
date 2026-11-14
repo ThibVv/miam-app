@@ -2,6 +2,7 @@ import { getContext } from "@/lib/data";
 import { signOut } from "@/app/actions";
 import { AppShell, PageHeader } from "@/components/ui";
 import { HouseholdSettings } from "./HouseholdSettings";
+import { FestiveToggle } from "@/components/festive/FestiveToggle";
 
 export default async function HouseholdPage() {
   const { household, people, meId } = await getContext();
@@ -24,6 +25,8 @@ export default async function HouseholdPage() {
       </section>
 
       <HouseholdSettings household={household} people={people} meId={meId} />
+
+      <FestiveToggle />
 
       <form action={signOut}>
         <button type="submit" className="btn-secondary w-full">Se déconnecter</button>

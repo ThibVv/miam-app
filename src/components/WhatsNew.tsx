@@ -2,6 +2,8 @@
 
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { LATEST_RELEASE, SEEN_KEY, unseenReleases, type Release } from "@/lib/changelog";
+import { useFestive } from "@/lib/festive";
+import { Snowfall } from "@/components/festive/Snowfall";
 
 function readSeen(): string | null {
   try {
@@ -26,6 +28,7 @@ export function WhatsNew() {
   // Côté serveur, rien à montrer : le stockage n'existe que dans le téléphone
   const seen = useSyncExternalStore(noSubscription, readSeen, () => LATEST_RELEASE);
   const [closed, setClosed] = useState(false);
+  const festive = useFestive();
   const releases: Release[] = closed ? [] : unseenReleases(seen);
 
   if (!releases.length) return null;
@@ -37,6 +40,7 @@ export function WhatsNew() {
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
       <button type="button" aria-label="Fermer" onClick={close} className="absolute inset-0 animate-[fade_0.2s_ease] bg-[#17201a]/45" />
+      {festive && <Snowfall className="absolute inset-0" />}
       <div
         role="dialog"
         aria-modal="true"

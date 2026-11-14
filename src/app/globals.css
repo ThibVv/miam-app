@@ -66,6 +66,46 @@ input[type="range"] {
   }
 }
 
+/* Noël : la neige tombe en dérivant, les boules se balancent, les ampoules clignotent */
+@keyframes snow-fall {
+  from {
+    transform: translate3d(0, -5vh, 0) rotate(0deg);
+  }
+  to {
+    transform: translate3d(var(--drift, 0px), 105vh, 0) rotate(220deg);
+  }
+}
+
+@keyframes snow-fade {
+  0%,
+  70% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes bauble-swing {
+  from {
+    transform: rotate(-7deg);
+  }
+  to {
+    transform: rotate(7deg);
+  }
+}
+
+@keyframes twinkle {
+  from {
+    opacity: 0.35;
+    transform: scale(0.85);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1.1);
+  }
+}
+
 /* Respecte le réglage système « réduire les animations » */
 @media (prefers-reduced-motion: reduce) {
   *,

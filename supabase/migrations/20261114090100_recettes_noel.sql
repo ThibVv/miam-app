@@ -1,6 +1,6 @@
 -- Miam : les recettes de Noël (bredele), transcrites du livre de recettes.
 -- À lancer APRÈS 20261114090000_noel.sql (qui crée la catégorie « Noël »).
--- Généré par scripts/build-noel-sql.ts depuis scripts/data/noel.md, pour le foyer au code 08083A ;
+-- Généré par scripts/build-noel-sql.ts depuis scripts/data/noel.md, pour le foyer au code FF4002 ;
 -- peut être relancé sans doublon.
 
 do $$
@@ -8,9 +8,9 @@ declare
   hid uuid;
   rid uuid;
 begin
-  select id into hid from public.households where invite_code = '08083A';
+  select id into hid from public.households where invite_code = 'FF4002';
   if hid is null then
-    raise exception 'Aucun foyer avec le code 08083A';
+    raise exception 'Aucun foyer avec le code FF4002';
   end if;
 
   if not exists (select 1 from public.recipes where household_id = hid and name = 'Cannes de Saint-Nicolas au chocolat') then
